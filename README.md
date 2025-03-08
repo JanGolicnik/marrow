@@ -57,14 +57,6 @@ typedef _Bool          bool;
 
 ### Printing
 
-`print`, `println` functions act like youd expect, basically just forward the calls to vprintf, I wish to make the syntax `"Value 1 is {}"` somehow possible, but we will have to wait for that.
-
-`format` will `malloc` a new buffer to hold the formatted string so watch out for that
-
-`debug`, `error` and `abort` macros use some formatting I like and print to stderr
-
-All these function flush the output buffer after every call.
-
 ```c
 void print(const char* format, ...);
 
