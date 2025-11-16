@@ -60,7 +60,7 @@ do { \
 typedef MAPA(u8, u8) _MAPA2;
 
 // returns the index at which the element would be inserted if it existed
-u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_size, u32 entry_size)
+inline u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_size, u32 entry_size)
 {
     if (mapa->size == 0) return -1;
 
@@ -88,7 +88,7 @@ u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_size, u32 entry
 thread_local u64 _mapa_i = -1;
 #define mapa_get(m, key) (_mapa_i = mapa_get_index(m, key), mapa_get_at_index(m, _mapa_i))
 
-void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u32 entry_size)
+inline void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u32 entry_size)
 {
     u32 alloc_size = new_size * entry_size;
     u8* new_entries = allocator_alloc(mapa->_allocator, alloc_size, 1);
@@ -157,7 +157,7 @@ do { \
     mapa_remove_at_index(m, mapa_get_index(m, key)); \
 } while (0)
 
-u64 mapa_hash_djb2(void const* v_key, u64 key_size)
+inline u64 mapa_hash_djb2(void const* v_key, u64 key_size)
 {
     // http://www.cse.yorku.ca/~oz/hash.html
     u8 const* key = v_key;
@@ -167,7 +167,7 @@ u64 mapa_hash_djb2(void const* v_key, u64 key_size)
     return hash;
 }
 
-u64 mapa_hash_fnv(void const* key, u64 key_size)
+inline u64 mapa_hash_fnv(void const* key, u64 key_size)
 {
     // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
     u64 hash = MAPA_INITIAL_SEED;
@@ -177,7 +177,7 @@ u64 mapa_hash_fnv(void const* key, u64 key_size)
     return hash;
 }
 
-u32 murmur_32_scramble(u32 k)
+inline u32 murmur_32_scramble(u32 k)
 {
     k *= 0xcc932d51;
     k = (k << 15) | (k >> 17);
@@ -185,17 +185,17 @@ u32 murmur_32_scramble(u32 k)
     return k;
 }
 
-u64 mapa_hash_u64(void const* key, u64 key_size)
+inline u64 mapa_hash_u64(void const* key, u64 key_size)
 {
     return *(u64*)key;
 }
 
-u64 mapa_hash_u32(void const* key, u64 key_size)
+inline u64 mapa_hash_u32(void const* key, u64 key_size)
 {
     return *(u32*)key;
 }
 
-u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
+inline u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
 {
     // https://en.wikipedia.org/wiki/MurmurHash
     u64 hash = MAPA_INITIAL_SEED;
@@ -223,7 +223,7 @@ u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
     return hash;
 }
 
-u8 mapa_cmp_bytes(void const* a, void const* b, u64 size)
+inline u8 mapa_cmp_bytes(void const* a, void const* b, u64 size)
 {
     return buf_cmp(a, b, size);
 }

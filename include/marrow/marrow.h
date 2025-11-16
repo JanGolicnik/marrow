@@ -77,7 +77,7 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define clamp(val, low, high) min(max(val, low), high)
 #endif // clamp
 
-static f32 wrap_float(f32 val, f32 max) {
+inline f32 wrap_float(f32 val, f32 max) {
     val = fmodf(val, max);
     if (val < 0.f) val += max;
     return val;
@@ -167,12 +167,12 @@ thread_local s8 _format_buf;
 
 #endif // _PRINTCCY_H
 
-void buf_copy(void* dst, const void* source, usize len)
+inline void buf_copy(void* dst, const void* source, usize len)
 {
     while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
 }
 
-i32 buf_cmp(const void* a, const void* b, usize len)
+inline i32 buf_cmp(const void* a, const void* b, usize len)
 {
     for (usize i = 0; i < len; i++) {
         if (((u8*)a)[i] != ((u8*)b)[i])
@@ -181,19 +181,19 @@ i32 buf_cmp(const void* a, const void* b, usize len)
     return 0;
 }
 
-void buf_set(void* dst, u8 value, usize len)
+inline void buf_set(void* dst, u8 value, usize len)
 {
     while (len--) ((u8*)dst)[len] = value;
 }
 
-u32 str_len(const char* str)
+inline u32 str_len(const char* str)
 {
     const char* iter = str;
     while (*iter) iter++;
     return iter - str;
 }
 
-u32 s8_cmp(s8 a, s8 b)
+inline u32 s8_cmp(s8 a, s8 b)
 {
     if (a.size != b.size) return a.size - b.size;
     return buf_cmp(a.ptr, b.ptr, a.size);
@@ -219,7 +219,7 @@ u32 s8_cmp(s8 a, s8 b)
 #define for_each_i(el, ptr, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < array_len(ptr); i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
 #endif // for_each_i
 
-u64 s8_hash(s8 buf)
+inline u64 s8_hash(s8 buf)
 {
     u64 hash = 0xcbf29ce484222325ULL;
     while (buf.size--) {
@@ -230,7 +230,7 @@ u64 s8_hash(s8 buf)
 }
 
 // expects a null terminated string
-u64 hash_str(const char *str)
+inline u64 hash_str(const char *str)
 {
     u64 hash = 0xcbf29ce484222325ULL;
     while (*str) {
@@ -240,7 +240,7 @@ u64 hash_str(const char *str)
     return hash;
 }
 
-u64 hash_u64(u64 val)
+inline u64 hash_u64(u64 val)
 {
     val ^= val >> 33;
     val *= 0xff51afd7ed558ccdULL;
@@ -250,7 +250,7 @@ u64 hash_u64(u64 val)
     return val;
 }
 
-u64 hash_combine(u64 a, u64 b)
+inline u64 hash_combine(u64 a, u64 b)
 {
     u64 x = a ^ b;
     x ^= x >> 33;
@@ -308,13 +308,13 @@ u64 hash_combine(u64 a, u64 b)
     }\
 } while(false)
 
-u32 value_to_rgb(f32 value)
+inline u32 value_to_rgb(f32 value)
 {
     value = clamp(value, 0.0f, 1.0f);
     return ((u8)(value * 0xff) << 16) | ((u8)(value * 0xff) << 8) | (u8)(value * 0xff);
 }
 
-u32 to_byte(f32 x){
+inline u32 to_byte(f32 x){
     // x in [0,1], round to nearest and clamp
     int v = (int)lrintf(x * 255.0f);
     if (v < 0) v = 0; else if (v > 255) v = 255;
@@ -327,7 +327,7 @@ struct(HSV) {
     f32 value;
 };
 
-u32 hsv_to_rgb(HSV hsv)
+inline u32 hsv_to_rgb(HSV hsv)
 {
     hsv.value = clamp(hsv.value, 0.0f, 1.0f);
     hsv.saturation = clamp(hsv.saturation, 0.0f, 1.0f);
@@ -353,7 +353,7 @@ u32 hsv_to_rgb(HSV hsv)
     return (R << 16) | (G << 8) | B;   // 0xRRGGBB
 }
 
-HSV rgb_to_hsv(u32 color) {
+inline HSV rgb_to_hsv(u32 color) {
     f32 r = (f32)((color >> 16) & 0xFF) / 255.f;
     f32 g = (f32)((color >>  8) & 0xFF) / 255.f;
     f32 b = (f32)( color        & 0xFF) / 255.f;
