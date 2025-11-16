@@ -15,32 +15,28 @@ typedef struct
     allocator_free_func* free;
 } Allocator;
 
-inline void* _allocator_default_alloc(void *ctx, usize size, usize align) { return malloc(size); }
-inline void* _allocator_default_realloc(void* ctx, void* ptr, usize old_size, usize new_size, usize align) { return realloc(ptr, new_size); }
-inline void  _allocator_default_free(void* ctx, void* ptr, usize size) { free(ptr); }
+static inline void* _allocator_default_alloc(void *ctx, usize size, usize align) { return malloc(size); }
+static inline void* _allocator_default_realloc(void* ctx, void* ptr, usize old_size, usize new_size, usize align) { return realloc(ptr, new_size); }
+static inline void  _allocator_default_free(void* ctx, void* ptr, usize size) { free(ptr); }
 
-thread_local static Allocator _default_allocator = {.alloc = &_allocator_default_alloc, .realloc = &_allocator_default_realloc, .free = &_allocator_default_free };
+thread_local Allocator _default_allocator = {.alloc = &_allocator_default_alloc, .realloc = &_allocator_default_realloc, .free = &_allocator_default_free };
 
 bool allocator_debug = false;
 
-inline void* allocator_alloc(Allocator* allocator, usize size, usize align)
+static inline void* allocator_alloc(Allocator* allocator, usize size, usize align)
 {
-    if (allocator_debug)
-    {
-        mrw_debug("allocating {}", size);
-    }
     allocator = allocator ? allocator : &_default_allocator;
     return allocator->alloc(allocator, size, align);
 }
 
-inline void* allocator_make_copy(Allocator* allocator, void* ptr, usize size, usize align)
+static inline void* allocator_make_copy(Allocator* allocator, void* ptr, usize size, usize align)
 {
     void* new_ptr = allocator_alloc(allocator, size, align);
     buf_copy(new_ptr, ptr, size);
     return new_ptr;
 }
 
-inline void* allocator_realloc(Allocator* allocator, void* ptr, usize old_size, usize new_size, usize align)
+static inline void* allocator_realloc(Allocator* allocator, void* ptr, usize old_size, usize new_size, usize align)
 {
     allocator = allocator ? allocator : &_default_allocator;
     return allocator->realloc(allocator, ptr, old_size, new_size, align);
@@ -59,13 +55,13 @@ inline void* allocator_realloc(Allocator* allocator, void* ptr, usize old_size, 
 #define allocator_make_copy_t(alloc, src, count, T) \
     ((T*) allocator_make_copy((alloc), (src), sizeof(T) * (count), alignof(T)))
 
-inline void allocator_free(Allocator* allocator, void* ptr, usize size)
+static inline void allocator_free(Allocator* allocator, void* ptr, usize size)
 {
     allocator = allocator ? allocator : &_default_allocator;
     allocator->free(allocator, ptr, size);
 }
 
-inline void* align_up(void* x, size_t a) {
+static inline void* align_up(void* x, size_t a) {
     return (void*)(((usize)x + (a-1)) & ~(uintptr_t)(a-1));
 }
 
@@ -82,9 +78,9 @@ typedef struct {
     Allocator* inner_allocator;
 } BumpAllocator;
 
-inline void* bump_allocator_alloc(void* a, usize size, usize align);
+static inline void* bump_allocator_alloc(void* a, usize size, usize align);
 
-inline BumpAllocatorBlock* bump_allocator_block_new(usize capacity, Allocator* allocator)
+static inline BumpAllocatorBlock* bump_allocator_block_new(usize capacity, Allocator* allocator)
 {
     BumpAllocatorBlock* block = (BumpAllocatorBlock*)allocator_alloc(allocator, sizeof(BumpAllocatorBlock) + capacity, 1);
     block->next = nullptr;
@@ -93,7 +89,7 @@ inline BumpAllocatorBlock* bump_allocator_block_new(usize capacity, Allocator* a
     return block;
 }
 
-inline void* bump_allocator_alloc(void* allocator, usize size, usize align)
+static inline void* bump_allocator_alloc(void* allocator, usize size, usize align)
 {
     BumpAllocator* a = allocator;
 
@@ -121,9 +117,9 @@ inline void* bump_allocator_alloc(void* allocator, usize size, usize align)
     }
 }
 
-inline void bump_allocator_free(void* allocator, void* ptr, usize size) { return; }
+static inline void bump_allocator_free(void* allocator, void* ptr, usize size) { return; }
 
-inline BumpAllocator bump_allocator_create()
+static inline BumpAllocator bump_allocator_create()
 {
     return (BumpAllocator) {
         .allocator.alloc = bump_allocator_alloc,
@@ -131,7 +127,7 @@ inline BumpAllocator bump_allocator_create()
     };
 }
 
-inline void bump_allocator_reset(BumpAllocator* a)
+static inline void bump_allocator_reset(BumpAllocator* a)
 {
     for (BumpAllocatorBlock* b = a->first; b; b = b->next) b->used = 0;
     a->last = a->first;
