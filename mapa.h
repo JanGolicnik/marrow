@@ -2,11 +2,7 @@
 #define MARROW_MAPA_H
 
 #include "marrow.h"
-
-typedef u64 mapa_size_t;
-typedef u64 mapa_hash_t;
-typedef mapa_hash_t (*mapa_hash_func)(void const*, mapa_size_t);
-typedef u8 (*mapa_cmp_func)(void const*, mapa_size_t, void const*, mapa_size_t);
+#include "marrow/allocator.h"
 
 #ifndef MAPA_INITIAL_CAPACITY
 #define MAPA_INITIAL_CAPACITY 1
@@ -16,281 +12,220 @@ typedef u8 (*mapa_cmp_func)(void const*, mapa_size_t, void const*, mapa_size_t);
 #define MAPA_INITIAL_SEED 0x9747b28c
 #endif // MAPA_INITIAl_SEED
 
-typedef struct {
-    void* data;
-    mapa_size_t size;
-} MapaItem;
+typedef u64 (*mapa_hash_func)(void const*, u64);
+typedef u8 (*mapa_cmp_func)(void const*, void const*, u64);
 
-#ifdef MARROW_MAPA_IMPLEMENTATION
-
-typedef struct{
-  void* key;
-  mapa_size_t key_size;
-  MapaItem item;
-} MapaEntry;
-
-typedef struct
-{
-  MapaEntry* entries;
-  mapa_size_t capacity;
-  mapa_size_t size;
-
-  mapa_hash_func hash_func;
-  mapa_cmp_func cmp_func;
-} Mapa;
-
-#else
-
-typedef void Mapa;
-
-#endif
-
-mapa_hash_t mapa_hash_djb2(void const* key, mapa_size_t key_size);
-mapa_hash_t mapa_hash_fnv(void const* key, mapa_size_t key_size);
-mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size);
-u8 mapa_cmp_bytes(void const* a, mapa_size_t a_size, void const* b, mapa_size_t b_size);
-
-Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func);
-bool mapa_destroy(Mapa* mapa);
-
-bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size);
-bool mapa_insert_str(Mapa* mapa, char const* key, char* data); //expects null terminated string
-
-MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size);
-MapaItem* mapa_get_str(Mapa* mapa, void const* key); // expects null terminated string
-bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size);
-bool mapa_remove_str(Mapa* mapa, void const* key); // expect null terminated string
-
-#ifdef MARROW_MAPA_IMPLEMENTATION
-#undef MARROW_MAPA_IMPLEMENTATION
-
-MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_len);
-
-void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
-{
-  MapaEntry *new_entries = calloc(new_capacity, sizeof(MapaEntry));
-
-  for (mapa_size_t i = 0; i < mapa->capacity; i++)
-  {
-    MapaEntry *entry = &mapa->entries[i];
-    if (entry->key == nullptr)
-      continue;
-
-    mapa_size_t index = mapa->hash_func(entry->key, entry->key_size) % new_capacity;
-    while(new_entries[index].key != nullptr)
-      index = (index + 1) % new_capacity;
-
-    new_entries[index] = *entry;
-  }
-
-  free(mapa->entries);
-  mapa->entries = new_entries;
-  mapa->capacity = new_capacity;
+#define MAPA(key_type, value_type) \
+struct \
+{ \
+    struct { \
+        /* DO NOT CHANGE ORDER */ \
+        union { \
+            struct { \
+                key_type key; \
+                value_type value; \
+            } _v; \
+            struct { \
+                key_type key; \
+                value_type value; \
+            }; \
+        }; \
+        bool has_value; \
+    }* entries; \
+\
+    u64 n_entries; \
+    u64 size; \
+\
+    mapa_hash_func _hash_func; \
+    mapa_cmp_func _cmp_func; \
+    Allocator* _allocator; \
+\
+    /* TODO: add owning */ \
 }
 
-bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size)
+#define mapa_init(m, hash_func, cmp_func, allocator) \
+do { \
+    m._hash_func = hash_func; m._cmp_func = cmp_func; m._allocator = allocator; m.size = MAPA_INITIAL_CAPACITY; m.n_entries = 0;\
+    m.entries = allocator_alloc(m._allocator, sizeof(m.entries[0]) * m.size, 1); \
+    buf_set(m.entries, 0, m.size * sizeof(*m.entries)); \
+} while(0)
+
+#define mapa_free(m) \
+do { \
+    /* TODO: if owning free keys as well */ \
+    allocator_free(m._allocator, m.entries, m.size * sizeof(*m.entries)); \
+    m.n_entries = 0; m.size = 0; m.entries = nullptr;\
+} while(0)
+
+typedef MAPA(u8, u8) _MAPA2;
+
+// returns the index at which the element would be inserted if it existed
+u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_size, u32 entry_size)
 {
-  MapaItem new_item = (MapaItem){ .data = malloc(data_size), .size = data_size};
-  memcpy(new_item.data, data, data_size);
+    if (mapa->size == 0) return -1;
 
-  MapaItem *item = mapa_get(mapa, key, key_size);
-  if(item)
-  {
-    free(item->data);
-    *item = new_item;
-    return true;
-  }
-
-  if (mapa->size >= mapa->capacity * 0.55)
-    internal_mapa_grow(mapa, mapa->capacity == 0 ? 1 : mapa->capacity * 2);
-
-  mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-  while(true)
-  {
-    if (mapa->entries[index].key == nullptr)
+    u8* entries = (u8*)mapa->entries;
+    u64 index = mapa->_hash_func(key, key_size) % mapa->size;
+    for (u32 i = 0; i < mapa->size; i++)
     {
-      mapa->size += 1; // only update the size if inserting a completely new element
-      break;
+        void* entry = entries + entry_size * index;
+        bool has_value = *(bool*)((u8*)entry + v_size);
+        if (has_value == false || mapa->_cmp_func(entry, key, key_size) == 0)
+        {
+            return index;
+        }
+
+        index = (index + 1) % mapa->size;
     }
 
-    MapaEntry* entry = &mapa->entries[index];
-    if(mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
+    return -1;
+}
+
+#define mapa_get_index(m, key_ptr) (_mapa_get_index((void*)&m, key_ptr, sizeof(m.entries[0]._v.key), sizeof(m.entries[0]._v), sizeof(*m.entries)))
+
+#define mapa_get_at_index(m, index) ((index <= m.size && m.entries[index].has_value) ? &m.entries[index]._v.value : nullptr)
+
+thread_local u64 _mapa_i = -1;
+#define mapa_get(m, key) (_mapa_i = mapa_get_index(m, key), mapa_get_at_index(m, _mapa_i))
+
+void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u32 entry_size)
+{
+    u32 alloc_size = new_size * entry_size;
+    u8* new_entries = allocator_alloc(mapa->_allocator, alloc_size, 1);
+    buf_set(new_entries, 0, alloc_size);
+
+    u8* entries = (u8*)mapa->entries;
+    for (u64 i = 0; i < mapa->size; i++)
     {
-      free(entry->item.data);
-      free(entry->key);
-      break;
+        void* entry = entries + entry_size * i;
+        bool has_value = *(bool*)((u8*)entry + v_size);
+        if (has_value == false)
+            continue;
+
+        u64 index = mapa->_hash_func(entry, key_size) % new_size;
+        while (*(bool*)(new_entries + entry_size * index + v_size))
+            index = (index + 1) % new_size;
+
+        buf_copy((void*)(new_entries + entry_size * index), entry, entry_size);
     }
 
-    index = (index + 1) % mapa->capacity;
-  }
-
-  MapaEntry entry = (MapaEntry){.key = malloc(key_size), .key_size = key_size, .item = new_item };
-  memcpy(entry.key, key, key_size);
-
-  mapa->entries[index] = entry;
-  return true;
+    allocator_free(mapa->_allocator, mapa->entries, mapa->size * entry_size);
+    mapa->entries = (void*)new_entries;
+    mapa->size = new_size;
 }
 
-bool mapa_insert_str(Mapa* mapa, char const* key, char* data)
+thread_local u64 _mapa_tmp_index = -1;
+#define mapa_insert(m, key_ptr, _value)(void*)( \
+    m.n_entries >= m.size * 0.55 ? \
+        _internal_mapa_grow((void*)&m, m.size * 2 + 1, sizeof((m).entries[0]._v.key), sizeof((m).entries[0]._v), sizeof((m).entries[0])) : \
+            (void)0, \
+    _mapa_tmp_index = mapa_get_index(m, key_ptr), \
+    !m.entries[_mapa_tmp_index].has_value ? (void)m.n_entries++ : (void)0, \
+    m.entries[_mapa_tmp_index].has_value = true, \
+    m.entries[_mapa_tmp_index]._v.key = *(key_ptr), \
+    m.entries[_mapa_tmp_index]._v.value = (_value), \
+    &m.entries[_mapa_tmp_index]._v.value \
+)
+
+// aborts if out of bounds
+#define mapa_insert_at_index(m, index, key_ptr, _value) ( \
+    !m.entries[index].has_value ? (void)m.n_entries++ : (void)0, \
+    m.entries[index].has_value = true, \
+    m.entries[index]._v.key = *(key_ptr), \
+    m.entries[index]._v.value = (_value), \
+    &m.entries[index]._v.value \
+)
+
+#define mapa_remove_at_index(m, index) \
+do { \
+    if (index >= m.size) break; \
+    m.entries[index].has_value = false; \
+    m.n_entries--; \
+    for (u32 i = 0; i < m.size; i++) \
+    { \
+        u32 next_index = (index + i + 1) % m.size; \
+        if (m.entries[next_index].has_value == false || \
+            next_index == (m._hash_func(&m.entries[next_index]._v.key, sizeof((m.entries)->_v.key)) % m.size)) \
+            break; \
+        m.entries[index] = m.entries[next_index]; \
+        m.entries[next_index].has_value = false; \
+    } \
+} while(0)
+
+#define mapa_remove(m, key) \
+do { \
+    mapa_remove_at_index(m, mapa_get_index(m, key)); \
+} while (0)
+
+u64 mapa_hash_djb2(void const* v_key, u64 key_size)
 {
-  return mapa_insert(mapa, key, strlen(key) + 1, data, strlen(data) + 1);
+    // http://www.cse.yorku.ca/~oz/hash.html
+    u8 const* key = v_key;
+    u64 hash = MAPA_INITIAL_SEED;
+    for(u32 i = 0; i < key_size; i++)
+        hash = ((hash << 5) + hash) + *(key++); /* hash * 33 + c */
+    return hash;
 }
 
-MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
+u64 mapa_hash_fnv(void const* key, u64 key_size)
 {
-  if (mapa->size == 0)
-    return nullptr;
-
-  mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-  for(u32 i = 0; i < mapa->capacity; i++)
-  {
-    MapaEntry *entry = &mapa->entries[index];
-    if(mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
-    {
-      return &entry->item;
-    }
-
-    index = (index + 1) % mapa->size;
-  }
-
-  return nullptr;
-}
-
-MapaItem* mapa_get_str(Mapa* mapa, void const* key)
-{
-  return mapa_get(mapa, key, strlen(key) + 1);
-}
-
-bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
-{
-  mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-  for (mapa_size_t i = 0; i < mapa->capacity; i++)
-  {
-    MapaEntry *entry = &mapa->entries[index];
-    if (entry->key == nullptr)
-      return true; // item doesnt exist
-
-    if (mapa->cmp_func(entry->key, entry->key_size, key, key_size) != 0)
-    {
-      index = (index + 1) % mapa->capacity;
-      continue;
-    }
-
-    free(entry->item.data);
-    free(entry->key);
-    memset(entry, 0, sizeof(*entry));
-    mapa->size -= 1;
-
-    // move remaining entries down
-    for(mapa_size_t i = 0; i < mapa->capacity; i++)
-    {
-      mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-      MapaEntry *entry = &mapa->entries[index];
-      mapa_size_t next_index = (index + i + 1) % mapa->capacity;
-      MapaEntry *next_entry = &mapa->entries[next_index];
-      if(next_entry->key == nullptr ||
-         next_index == mapa->hash_func(next_entry->key, next_entry->key_size))
-        break; // if entry is where it should be or if slot is empty
-
-      memcpy(entry, next_entry, sizeof(*entry));
-      memset(next_entry, 0, sizeof(*entry));
-    }
-
-    return true;
-  }
-
-  return false;
-}
-
-bool mapa_remove_str(Mapa* mapa, void const* key)
-{
-  return mapa_remove(mapa, key, strlen(key) + 1);
-}
-
-
-Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func)
-{
-  Mapa* mapa = (Mapa*)malloc(sizeof(Mapa));
-  *mapa = (Mapa){.hash_func = hash_func, .cmp_func = cmp_func};
-  internal_mapa_grow(mapa, MAPA_INITIAL_CAPACITY);
-  return mapa;
-}
-
-bool mapa_destroy(Mapa* mapa)
-{
-  for (u32 i = 0; i < mapa->size; i++)
-  {
-    MapaEntry *entry = &mapa->entries[i];
-    free(entry->key);
-    free(entry->item.data);
-  }
-
-  free(mapa);
-  return true;
-}
-
-
-mapa_hash_t mapa_hash_djb2(void const* v_key, mapa_size_t key_size)
-{
-  // http://www.cse.yorku.ca/~oz/hash.html
-  u8 const* key = v_key;
-  mapa_hash_t hash = MAPA_INITIAL_SEED;
-  for(u32 i = 0; i < key_size; i++)
-    hash = ((hash << 5) + hash) + *(key++); /* hash * 33 + c */
-  return hash;
-}
-
-mapa_hash_t mapa_hash_fnv(void const* key, mapa_size_t key_size)
-{
-  // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
-  mapa_hash_t hash = MAPA_INITIAL_SEED;
-  hash ^= 2166136261UL;
-  for(u32 i = 0; i < key_size; i++)
-    hash = (hash ^ ((u8*)key)[i]) * 16777619;
-  return hash;
+    // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+    u64 hash = MAPA_INITIAL_SEED;
+    hash ^= 2166136261UL;
+    for(u32 i = 0; i < key_size; i++)
+        hash = (hash ^ ((u8*)key)[i]) * 16777619;
+    return hash;
 }
 
 u32 murmur_32_scramble(u32 k)
 {
-  k *= 0xcc932d51;
-  k = (k << 15) | (k >> 17);
-  k *= 0x1b873593;
-  return k;
+    k *= 0xcc932d51;
+    k = (k << 15) | (k >> 17);
+    k *= 0x1b873593;
+    return k;
 }
 
-mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size)
+u64 mapa_hash_u64(void const* key, u64 key_size)
 {
-  // https://en.wikipedia.org/wiki/MurmurHash
-  mapa_hash_t hash = MAPA_INITIAL_SEED;
-
-  for (mapa_size_t i = 0; i + 4 <= key_size; i += 4)
-  {
-    u32 group = ((u32*)key)[i];
-    hash ^= murmur_32_scramble(group);
-    hash = (hash << 13) | (hash >> 19);
-    hash = hash * 5 + 0x36546b64;
-  }
-
-  u32 remaining = 0;
-  u8 remaining_size = key_size % 4;
-  for (u8 i = 0; i < remaining_size; i++)
-    remaining = ((u8*)key)[key_size - remaining_size + i] | (remaining << 8);
-  hash ^= murmur_32_scramble(remaining);
-
-  hash ^= key_size;
-  hash ^= hash >> 16;
-  hash *= 0x85ebca6b;
-  hash ^= hash >> 13;
-  hash *= 0xc2b2ae35;
-  hash ^= hash >> 16;
-  return hash;
+    return *(u64*)key;
 }
 
-u8 mapa_cmp_bytes(void const* a, mapa_size_t a_size, void const* b, mapa_size_t b_size)
+u64 mapa_hash_u32(void const* key, u64 key_size)
 {
-  return a_size == b_size ? memcmp(a, b, a_size) : -1;
+    return *(u32*)key;
 }
 
-#endif // MARROW_MAPA_IMPLEMENTATION
+u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
+{
+    // https://en.wikipedia.org/wiki/MurmurHash
+    u64 hash = MAPA_INITIAL_SEED;
+
+    for (u64 i = 0; i + 4 <= key_size; i += 4)
+    {
+        u32 group = ((u32*)key)[i];
+        hash ^= murmur_32_scramble(group);
+        hash = (hash << 13) | (hash >> 19);
+        hash = hash * 5 + 0x36546b64;
+    }
+
+    u32 remaining = 0;
+    u8 remaining_size = key_size % 4;
+    for (u8 i = 0; i < remaining_size; i++)
+        remaining = ((u8*)key)[key_size - remaining_size + i] | (remaining << 8);
+    hash ^= murmur_32_scramble(remaining);
+
+    hash ^= key_size;
+    hash ^= hash >> 16;
+    hash *= 0x85ebca6b;
+    hash ^= hash >> 13;
+    hash *= 0xc2b2ae35;
+    hash ^= hash >> 16;
+    return hash;
+}
+
+u8 mapa_cmp_bytes(void const* a, void const* b, u64 size)
+{
+    return buf_cmp(a, b, size);
+}
 
 #endif // MARROW_MAPA_H
