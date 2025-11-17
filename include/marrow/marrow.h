@@ -155,6 +155,17 @@ thread_local s8 _format_buf;
 )
 #endif // mrw_format
 
+#ifndef mrw_format_s8
+thread_local s8 _format_s8_buf;
+#define mrw_format_s8(f, s, ...)\
+(\
+    _format_s8_buf.size = min(print(0, 0, f, __VA_ARGS__), (i32)(s).size),\
+    _format_s8_buf.ptr = (s).ptr,\
+    (void)print((char*)_format_s8_buf.ptr, _format_s8_buf.size, f, __VA_ARGS__),\
+    (s)\
+)
+#endif // mrw_format
+
 #ifndef mrw_debug
 #define mrw_debug(f, ...) do { printfb(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_debug
