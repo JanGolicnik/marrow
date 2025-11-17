@@ -206,6 +206,12 @@ static inline u32 str_len(const char* str)
     return iter - str;
 }
 
+static inline u32 s8_find_r(s8 s, char c)
+{
+    while (s.size > 0 && ((char)s.ptr[--s.size] != c));
+    return s.size;
+}
+
 static inline u32 s8_cmp(s8 a, s8 b)
 {
     if (a.size != b.size) return a.size - b.size;
