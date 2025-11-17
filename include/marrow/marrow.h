@@ -106,6 +106,7 @@ struct(s8) {
 
 #define S8(str) (s8){ .ptr = (u8*)(str), .size = sizeof((str)) }
 #define strToS8(str) (s8){ .ptr = (u8*)(str), .size = str_len((str)) }
+#define strToS8Len(str, len) (s8){ .ptr = (u8*)(str), .size = (len) }
 
 #ifndef push_stream
 #define push_stream(stream) fflush(stream)
