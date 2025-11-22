@@ -350,7 +350,6 @@ static inline HSV rgb_to_hsv(u32 color) {
 
 #ifdef _PRINTCCY_H
 
-#ifndef mrw_format
 thread_local s8 _format_buf;
 thread_local u32 _format_buf_len;
 #define mrw_format(f, allocator, ...)\
@@ -361,7 +360,14 @@ thread_local u32 _format_buf_len;
     _format_buf.end = _format_buf.start + _format_buf_len,\
     _format_buf\
 )
-#endif // mrw_format
+#define mrw_format_slice(f, slice, ...)\
+(\
+    _format_buf = (slice),\
+    _format_buf_len = min((usize)print(0, 0, f, __VA_ARGS__), slice_count(_format_buf)),\
+    (void)print((char*)_format_buf.start, slice_count(_format_buf), f, __VA_ARGS__),\
+    _format_buf.end = _format_buf.start + _format_buf_len,\
+    _format_buf\
+)
 
 #ifndef mrw_debug
 #define mrw_debug(f, ...) do { printfb(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)

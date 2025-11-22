@@ -65,6 +65,28 @@ static inline void* align_up(void* x, size_t a) {
     return (void*)(((usize)x + (a-1)) & ~(uintptr_t)(a-1));
 }
 
+typedef struct {
+    char* data;
+    usize capacity;
+    usize used;
+} StringAllocator;
+
+static inline void* string_allocator_alloc(void* allocator, usize size, usize align)
+{
+    StringAllocator* a = allocator;
+    if (a->used + size > a->capacity) mrw_abort("string allocator out of space");
+    void* p = (void*)(a->data + a->used);
+    a->used += size;
+    return p;
+}
+
+static inline void string_allocator_free(void* allocator, void* ptr, usize size) { return; }
+
+static inline void string_allocator_reset(StringAllocator* a)
+{
+    a->used = 0;
+}
+
 // BUMP ARENA
 typedef struct BumpAllocatorBlock {
     struct BumpAllocatorBlock* next;
