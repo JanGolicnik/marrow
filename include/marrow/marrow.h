@@ -103,13 +103,15 @@ static inline f32 wrap_float(f32 val, f32 max) {
 #ifndef array_len
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define array_slice(arr) slice_to((arr), array_len((arr)))
+#define array_for_each(arr, ptr) for(typeof((arr)) (ptr) = (arr); (ptr) < ((arr) + array_len((arr))); (ptr)++)
+#define array_for_each_i(arr, i) for(usize i = 0; (i) < array_len((arr)); (i)++)
 #endif // array_len
 
-static inline void raw_buf_copy(void* dst, const void* source, usize len)
+static inline void buf_copy(void* dst, const void* source, usize len)
 {
     while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
 }
-static inline i32 raw_buf_cmp(const void* a, const void* b, usize len)
+static inline i32 buf_cmp(const void* a, const void* b, usize len)
 {
     for (usize i = 0; i < len; i++) {
         if (((u8*)a)[i] != ((u8*)b)[i])
@@ -117,34 +119,32 @@ static inline i32 raw_buf_cmp(const void* a, const void* b, usize len)
     }
     return 0;
 }
-static inline void raw_buf_set(void* dst, u8 value, usize len)
+static inline void buf_set(void* dst, u8 value, usize len)
 {
     while (len--) ((u8*)dst)[len] = value;
 }
 
-#ifndef SLICE
 #define SLICE(type)                struct { type* start; type* end; }
+
+#define slice_start(s)             ((s).start)
+#define slice_end(s)               ((s).end)
 
 #define slice(ptr_start, ptr_end)  { .start = (ptr_start), .end = (ptr_end) }
 #define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
 #define slice_to(ptr, count)       slice_range((ptr), 0, (count))
 
-#define slice_t(s, t)              ((t ## Slice)slice((t*)((s).start), (t*)((s).end)))
+#define slice_t(s, t)              ((t ## Slice)slice((t*)slice_start((s)), (t*)slice_end((s))))
 
-#define slice_count(slice)         ((usize)((slice).end - (slice).start))
-#define slice_size(slice)          (slice_count(slice) * sizeof(*(slice).start))
+#define slice_count(s)             ((usize)(slice_end((s)) - slice_start((s))))
+#define slice_size(s)              (slice_count(s) * sizeof(*slice_start((s))))
 
-#define slice_for_each(slice, ptr) for(typeof((slice).start) ptr = (slice).start; ptr != (slice).end; ptr++)
-#define slice_for_each_i(slice, i) for(usize i = 0; ((slice).start + (i)) != (slice).end; i++)
+#define slice_for_each(s, ptr)     for(typeof(slice_start((s))) ptr = slice_start((s)); ptr != slice_end((s)); ptr++)
+#define slice_for_each_i(s, i)     for(usize i = 0; (slice_start((s)) + (i)) != slice_end((s)); i++)
 
-#define slice_copy(slice, from)    raw_buf_copy((void*)(slice).start, (void*)(from), slice_size((slice)))
-#define slice_cmp(a, b)            raw_buf_cmp((void*)(a).start, (void*)(b).start, min(slice_size((a)), slice_size((b))))
-#define slice_set(slice, value)    do { slice_for_each(slice, ptr) (*ptr) = (value); } while(false)
-
-typedef SLICE(u8) u8Slice;
-#define slice_bytes(s)             slice_t(s, u8)
-
-#endif // SLICE
+#define slice_copy_ptr(s, from)    buf_copy((void*)slice_start((s)), (void*)(from), slice_size((s)))
+#define slice_copy(s, from)        slice_copy_ptr(s, slice_start(from))
+#define slice_cmp(a, b)            buf_cmp((void*)slice_start(a), (void*)slice_start(b), min(slice_size((a)), slice_size((b))))
+#define slice_set(s, value)        do { slice_for_each(s, ptr) (*ptr) = (value); } while(false)
 
 #ifndef struct
 #define struct(name)         \
@@ -154,7 +154,9 @@ typedef SLICE(u8) u8Slice;
 #endif // struct
 
 typedef SLICE(char) s8;
-#define str_slice(str) ((s8)slice_to(str, str_len(str)))
+typedef SLICE(u8) u8Slice;
+#define str(s) ((s8)slice_to(s, str_len(s)))
+#define slice_bytes(s)             slice_t(s, u8)
 
 static inline u32 str_len(const char* str)
 {
@@ -210,7 +212,7 @@ static inline u64 hash_combine(u64 a, u64 b)
     return x;
 }
 
-#define LINE_UNIQUE_HASH hash_combine(hash_slice(str_slice(__FILE__)), hash_u64(__LINE__))
+#define LINE_UNIQUE_HASH hash_combine(hash_slice(str(__FILE__)), hash_u64(__LINE__))
 
 #define INV_SQRT_3 0.5773502691896258f  // 1/sqrt(3)
 

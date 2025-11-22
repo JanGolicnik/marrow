@@ -43,9 +43,9 @@ int main(void)
     char src_buf[8] = "abc";
     char dst_buf[8] = {0};
 
-    raw_buf_copy(dst_buf, src_buf, sizeof(src_buf));
-    i32 buf_cmp = raw_buf_cmp(dst_buf, src_buf, sizeof(src_buf));
-    raw_buf_set(dst_buf, 0x7f, sizeof(dst_buf));
+    buf_copy(dst_buf, src_buf, sizeof(src_buf));
+    i32 buf_cmp = buf_cmp(dst_buf, src_buf, sizeof(src_buf));
+    buf_set(dst_buf, 0x7f, sizeof(dst_buf));
 
     i32 int_array[4] = { 10, 20, 30, 40 };
     SLICE(i32) i32_slice = array_slice(int_array);
