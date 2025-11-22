@@ -44,7 +44,7 @@ int main(void)
     char dst_buf[8] = {0};
 
     buf_copy(dst_buf, src_buf, sizeof(src_buf));
-    i32 buf_cmp = buf_cmp(dst_buf, src_buf, sizeof(src_buf));
+    i32 r = buf_cmp(dst_buf, src_buf, sizeof(src_buf));
     buf_set(dst_buf, 0x7f, sizeof(dst_buf));
 
     i32 int_array[4] = { 10, 20, 30, 40 };
@@ -54,8 +54,8 @@ int main(void)
         *it += 1;
     }
 
-    s8 s1 = str_slice("hello world");
-    s8 s2 = str_slice("hello world!");
+    s8 s1 = str("hello world");
+    s8 s2 = str("hello world!");
 
     char *last_o = s8_find_r(s1, 'o');
     u32  s_cmp   = s8_cmp(s1, s2);
