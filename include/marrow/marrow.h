@@ -103,7 +103,7 @@ static inline f32 wrap_float(f32 val, f32 max) {
 #ifndef array_len
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define array_slice(arr) slice_to((arr), array_len((arr)))
-#define array_for_each(arr, ptr) for(typeof((arr)) ptr = (arr); (ptr) < ((arr) + array_len((arr))); (ptr)++)
+#define array_for_each(arr, ptr) for(typeof(*(arr))* ptr = (arr); (ptr) < ((arr) + array_len((arr))); (ptr)++)
 #define array_for_each_i(arr, i) for(usize i = 0; (i) < array_len((arr)); (i)++)
 #endif // array_len
 
