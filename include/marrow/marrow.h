@@ -2,6 +2,8 @@
 #define MARROW_H
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 typedef uint8_t       u8;
@@ -21,15 +23,15 @@ typedef double        f64;
 
 typedef _Bool         bool;
 
-const u8  U8_MAX  = ~(u8) 0;
-const u16 U16_MAX = ~(u16)0;
-const u32 U32_MAX = ~(u32)0;
-const u64 U64_MAX = ~(u64)0;
+#define U8_MAX  UINT8_MAX
+#define U16_MAX UINT16_MAX
+#define U32_MAX UINT32_MAX
+#define U64_MAX UINT64_MAX
 
-const i8  I8_MAX  =  (i8)  ((1 << 7) - 1);
-const i16 I16_MAX =  (i16) ((1 << 15) - 1);
-const i32 I32_MAX =  (i32) ((1u << 31) - 1);
-const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
+#define I8_MAX  INT8_MAX
+#define I16_MAX INT16_MAX
+#define I32_MAX INT32_MAX
+#define I64_MAX INT64_MAX
 
 #ifndef true
 #define true 1
@@ -40,12 +42,8 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #endif // false
 
 #ifndef nullptr
-#define nullptr (void*)0
+#define nullptr ((void*)0)
 #endif // nullptr
-
-#ifndef NULL
-#define NULL {}
-#endif // NULL
 
 #define BIT(n) (1ULL << (n))
 #define BIT_IS_SET(val,n)  (((val) >> (n)) & 1)
@@ -64,6 +62,17 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #ifndef alignof
 #define alignof _Alignof
 #endif // alignof
+
+#ifndef thread_local
+#define thread_local _Thread_local
+#endif // thread_local
+
+#ifndef LINE_UNIQUE_VAR
+#define LINE_UNIQUE_VAR_CONCAT(a, b) a##b
+#define LINE_UNIQUE_VAR_PASS(a, b) LINE_UNIQUE_VAR_CONCAT(a, b)
+#define LINE_UNIQUE_VAR(var) LINE_UNIQUE_VAR_PASS(var, __LINE__)
+#define LINE_UNIQUE_I LINE_UNIQUE_VAR(i)
+#endif //LINE_UNIQUE_VAR
 
 #ifndef max
 #define max(a, b) (((a) > (b)) ? (a) : (b))
@@ -93,99 +102,14 @@ static inline f32 wrap_float(f32 val, f32 max) {
 
 #ifndef array_len
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
+#define array_slice(arr) slice_to((arr), array_len((arr)))
 #endif // array_len
 
-#ifndef struct
-#define struct(name) typedef struct name name; struct name
-#endif // struct
-
-struct(s8) {
-    u8* ptr;
-    usize size;
-};
-
-#define S8(str) (s8){ .ptr = (u8*)(str), .size = sizeof((str)) }
-#define strToS8(str) (s8){ .ptr = (u8*)(str), .size = str_len((str)) }
-#define strToS8Len(str, len) (s8){ .ptr = (u8*)(str), .size = (len) }
-
-#ifndef push_stream
-#define push_stream(stream) fflush(stream)
-#endif // push_stream
-
-#ifndef thread_local
-#define thread_local _Thread_local
-#endif // thread_local
-
-#ifndef mrw_debug_color
-#define mrw_debug_color "\x1b[92m"
-#endif // mrw_debug_color
-
-#ifndef mrw_error_color
-#define mrw_error_color "\x1b[91m"
-#endif // mrw_error_color
-
-#ifndef mrw_text_color
-#define mrw_text_color "\x1b[0m\x1b[90m"
-#endif // mrw_text_color
-
-#ifndef _PRINTCCY_H
-
-#ifndef mrw_debug
-#define mrw_debug(f, ...) do { fprintf(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " %s on line %d: \x1b[0m " f "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); } while(0)
-#endif // mrw_debug
-
-#ifndef mrw_error
-#define mrw_error(f, ...) do { fprintf(stderr, mrw_error_color "[ERROR]" mrw_text_color " %s on line %d: \x1b[0m " f "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); } while(0)
-#endif // mrw_error
-
-#ifndef mrw_abort
-#define mrw_abort(f, ...) do { fprintf(stderr, mrw_error_color "[ABORT]" mrw_text_color " %s on line %d: \x1b[0m " f "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); exit(1); } while(0)
-#endif // mrw_abort
-
-#else // _PRINTCCY_H
-
-#ifndef mrw_format
-thread_local s8 _format_buf;
-#define mrw_format(f, allocator, ...)\
-(\
-    _format_buf.size = print(0, 0, f, __VA_ARGS__),\
-    _format_buf.ptr = allocator_alloc((Allocator*)allocator, _format_buf.size + 1, 1),\
-    (void)print((char*)_format_buf.ptr, _format_buf.size, f, __VA_ARGS__),\
-    _format_buf\
-)
-#endif // mrw_format
-
-#ifndef mrw_format_s8
-thread_local s8 _format_s8_buf;
-#define mrw_format_s8(f, s, ...)\
-(\
-    _format_s8_buf.size = min(print(0, 0, f, __VA_ARGS__), (i32)(s).size),\
-    _format_s8_buf.ptr = (s).ptr,\
-    (void)print((char*)_format_s8_buf.ptr, _format_s8_buf.size, f, __VA_ARGS__),\
-    (s)\
-)
-#endif // mrw_format
-
-#ifndef mrw_debug
-#define mrw_debug(f, ...) do { printfb(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
-#endif // mrw_debug
-
-#ifndef mrw_error
-#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
-#endif // mrw_error
-
-#ifndef mrw_abort
-#define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
-#endif // mrw_abort
-
-#endif // _PRINTCCY_H
-
-static inline void buf_copy(void* dst, const void* source, usize len)
+static inline void raw_buf_copy(void* dst, const void* source, usize len)
 {
     while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
 }
-
-static inline i32 buf_cmp(const void* a, const void* b, usize len)
+static inline i32 raw_buf_cmp(const void* a, const void* b, usize len)
 {
     for (usize i = 0; i < len; i++) {
         if (((u8*)a)[i] != ((u8*)b)[i])
@@ -193,11 +117,44 @@ static inline i32 buf_cmp(const void* a, const void* b, usize len)
     }
     return 0;
 }
-
-static inline void buf_set(void* dst, u8 value, usize len)
+static inline void raw_buf_set(void* dst, u8 value, usize len)
 {
     while (len--) ((u8*)dst)[len] = value;
 }
+
+#ifndef SLICE
+#define SLICE(type)                struct { type* start; type* end; }
+
+#define slice(ptr_start, ptr_end)  { .start = (ptr_start), .end = (ptr_end) }
+#define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
+#define slice_to(ptr, count)       slice_range((ptr), 0, (count))
+
+#define slice_t(s, t)              ((t ## Slice)slice((t*)((s).start), (t*)((s).end)))
+
+#define slice_count(slice)         ((usize)((slice).end - (slice).start))
+#define slice_size(slice)          (slice_count(slice) * sizeof(*(slice).start))
+
+#define slice_for_each(slice, ptr) for(typeof((slice).start) ptr = (slice).start; ptr != (slice).end; ptr++)
+#define slice_for_each_i(slice, i) for(usize i = 0; ((slice).start + (i)) != (slice).end; i++)
+
+#define slice_copy(slice, from)    raw_buf_copy((void*)(slice).start, (void*)(from), slice_size((slice)))
+#define slice_cmp(a, b)            raw_buf_cmp((void*)(a).start, (void*)(b).start, min(slice_size((a)), slice_size((b))))
+#define slice_set(slice, value)    do { slice_for_each(slice, ptr) (*ptr) = (value); } while(false)
+
+typedef SLICE(u8) u8Slice;
+#define slice_bytes(s)             slice_t(s, u8)
+
+#endif // SLICE
+
+#ifndef struct
+#define struct(name)         \
+    typedef struct name name;\
+    typedef SLICE(name) name##Slice;\
+    struct name
+#endif // struct
+
+typedef SLICE(char) s8;
+#define str_slice(str) ((s8)slice_to(str, str_len(str)))
 
 static inline u32 str_len(const char* str)
 {
@@ -206,58 +163,31 @@ static inline u32 str_len(const char* str)
     return iter - str;
 }
 
-static inline u32 s8_find_r(s8 s, char c)
+static inline char* s8_find_r(s8 s, char c)
 {
-    while (s.size > 0 && ((char)s.ptr[--s.size] != c));
-    return s.size;
+    if (s.start == s.end) return nullptr;
+    do { if(*(--s.end) == c) return s.end; } while (s.end != s.start);
+    return nullptr;
 }
 
-static inline u32 s8_cmp(s8 a, s8 b)
+static inline i32 s8_cmp(s8 a, s8 b)
 {
-    if (a.size != b.size) return a.size - b.size;
-    return buf_cmp(a.ptr, b.ptr, a.size);
+    u32 a_count = slice_count(a);
+    u32 b_count = slice_count(b);
+    if (a_count != b_count) return a_count - b_count;
+    return slice_cmp(a, b);
 }
 
-
-#ifndef LINE_UNIQUE_VAR
-#define LINE_UNIQUE_VAR_CONCAT(a, b) a##b
-#define LINE_UNIQUE_VAR_PASS(a, b) LINE_UNIQUE_VAR_CONCAT(a, b)
-#define LINE_UNIQUE_VAR(var) LINE_UNIQUE_VAR_PASS(var, __LINE__)
-#define LINE_UNIQUE_I LINE_UNIQUE_VAR(i)
-#endif //LINE_UNIQUE_VAR
-
-#ifndef for_each_n
-#define for_each_n(el, ptr, n) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr))* el = &ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < n; LINE_UNIQUE_I++, el = &ptr[LINE_UNIQUE_I])
-#endif // for_each_n
-
-#ifndef for_each
-#define for_each(el, ptr) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr))* el = &ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < array_len(ptr); LINE_UNIQUE_I++, el = &ptr[LINE_UNIQUE_I])
-#endif // for_each
-
-#ifndef for_each_i
-#define for_each_i(el, ptr, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < array_len(ptr); i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
-#endif // for_each_i
-
-static inline u64 s8_hash(s8 buf)
+static inline u64 hash_bytes(u8Slice s)
 {
     u64 hash = 0xcbf29ce484222325ULL;
-    while (buf.size--) {
-        hash ^= (u8)(*buf.ptr++);
+    slice_for_each(s, v) {
+        hash ^= (u8)(*v);
         hash *= 0x100000001b3ULL;
     }
     return hash;
 }
-
-// expects a null terminated string
-static inline u64 hash_str(const char *str)
-{
-    u64 hash = 0xcbf29ce484222325ULL;
-    while (*str) {
-        hash ^= (u8)(*str++);
-        hash *= 0x100000001b3ULL;
-    }
-    return hash;
-}
+#define hash_slice(s) hash_bytes(slice_bytes((s)))
 
 static inline u64 hash_u64(u64 val)
 {
@@ -280,7 +210,7 @@ static inline u64 hash_combine(u64 a, u64 b)
     return x;
 }
 
-#define LINE_UNIQUE_HASH hash_combine(hash_str(__FILE__), hash_u64(__LINE__))
+#define LINE_UNIQUE_HASH hash_combine(hash_slice(str_slice(__FILE__)), hash_u64(__LINE__))
 
 #define INV_SQRT_3 0.5773502691896258f  // 1/sqrt(3)
 
@@ -399,5 +329,50 @@ static inline HSV rgb_to_hsv(u32 color) {
 
     return (HSV){wrap_float(H, 360.0f), clamp(S, 0.0f, 1.0f), clamp(V, 0.0f, 1.0f)};
 }
+
+#ifndef push_stream
+#define push_stream(stream) fflush(stream)
+#endif // push_stream
+
+#ifndef mrw_debug_color
+#define mrw_debug_color "\x1b[92m"
+#endif // mrw_debug_color
+
+#ifndef mrw_error_color
+#define mrw_error_color "\x1b[91m"
+#endif // mrw_error_color
+
+#ifndef mrw_text_color
+#define mrw_text_color "\x1b[0m\x1b[90m"
+#endif // mrw_text_color
+
+#ifdef _PRINTCCY_H
+
+#ifndef mrw_format
+thread_local s8 _format_buf;
+thread_local u32 _format_buf_len;
+#define mrw_format(f, allocator, ...)\
+(\
+    _format_buf_len = print(0, 0, f, __VA_ARGS__),\
+    _format_buf.start = allocator_alloc((Allocator*)allocator, _format_buf_len + 1, 1),\
+    (void)print((char*)_format_buf.start, _format_buf_len, f, __VA_ARGS__),\
+    _format_buf.end = _format_buf.start + _format_buf_len,\
+    _format_buf\
+)
+#endif // mrw_format
+
+#ifndef mrw_debug
+#define mrw_debug(f, ...) do { printfb(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#endif // mrw_debug
+
+#ifndef mrw_error
+#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#endif // mrw_error
+
+#ifndef mrw_abort
+#define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
+#endif // mrw_abort
+
+#endif // _PRINTCCY_H
 
 #endif // MARROW_H
