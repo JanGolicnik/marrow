@@ -12,6 +12,8 @@ if not exist %build_dir% (
    build.bat %configuration%
 )
 
+copy /Y "stvari.json" %build_dir%\
+
 cd %build_dir%
 
 if exist marrow_test.exe (

@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define PRINTCCY_CUSTOM_TYPES s8: print_s8
+#include <printccy/printccy.h>
+
 typedef uint8_t       u8;
 typedef uint16_t      u16;
 typedef uint32_t      u32;
@@ -100,6 +103,13 @@ static inline f32 wrap_float(f32 val, f32 max) {
 #define is_between_inclusive(val, low, high) ((val) >= (low) && (val) <= (high))
 #endif // is_between_inclusive
 
+static inline u8 i32_n_digits(i32 v)
+{
+    u8 n = 0;
+    while(v > 0) { v /= 10; n++; }
+    return n;
+}
+
 #ifndef array_len
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define array_slice(arr) slice_to((arr), array_len((arr)))
@@ -133,6 +143,8 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
 #define slice_to(ptr, count)       slice_range((ptr), 0, (count))
 
+#define slice_advance(s, count)    slice_range((s).start, count, slice_count((s)))
+
 #define slice_t(s, t)              ((t ## Slice)slice((t*)slice_start((s)), (t*)slice_end((s))))
 
 #define slice_count(s)             ((usize)(slice_end((s)) - slice_start((s))))
@@ -165,11 +177,61 @@ static inline u32 str_len(const char* str)
     return iter - str;
 }
 
+static inline char* s8_skip_while(s8 s, char c)
+{
+    while(s.start != s.end && *s.start == c) s.start++;
+    return s.start;
+}
+
+static inline char* s8_skip_until(s8 s, char c)
+{
+    while(s.start != s.end && *(s.start++) != c);
+    return s.start;
+}
+
+static inline char* s8_skip_digit(s8 s)
+{
+    while(s.start != s.end && *s.start >= 48 && *s.start <= 57) s.start++;
+    return s.start;
+}
+
+static inline bool is_char(char c)
+{
+    return (c >= 65 && c <= 90) || (c == '_') || (c >= 97 && c <= 122);
+}
+
+static inline char* s8_skip_char(s8 s)
+{
+    while(s.start != s.end && is_char(*s.start)) s.start++;
+    return s.start;
+}
+
 static inline char* s8_find_r(s8 s, char c)
 {
     if (s.start == s.end) return nullptr;
     do { if(*(--s.end) == c) return s.end; } while (s.end != s.start);
     return nullptr;
+}
+
+static inline i32 s8_parse_i32(s8 s)
+{
+    i32 val = 0;
+    bool negate = *s.start == '-';
+    slice_for_each(s, c)
+    {
+        if (*c < 48 || *c > 57) continue;
+        val = val * 10 + *c - 48;
+    }
+    return negate ? -val : val;
+}
+
+static inline f32 s8_parse_float(s8 s)
+{
+    bool negate = *s.start == '-';
+    s8 whole = s, fraction = s;
+    fraction.start = whole.end = s8_skip_until(whole, '.');
+    i32 wholei = s8_parse_i32(fraction);
+    return (f32)s8_parse_i32(whole) + (f32)wholei / (f32)pow(10, i32_n_digits(wholei)) * (negate ? -1.0 : 1.0f);
 }
 
 static inline i32 s8_cmp(s8 a, s8 b)
@@ -348,8 +410,6 @@ static inline HSV rgb_to_hsv(u32 color) {
 #define mrw_text_color "\x1b[0m\x1b[90m"
 #endif // mrw_text_color
 
-#ifdef _PRINTCCY_H
-
 thread_local s8 _format_buf;
 thread_local u32 _format_buf_len;
 #define mrw_format(f, allocator, ...)\
@@ -381,6 +441,15 @@ thread_local u32 _format_buf_len;
 #define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
 #endif // mrw_abort
 
-#endif // _PRINTCCY_H
+int print_s8(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
+    s8 s = va_arg(*list, s8);
+    size_t n = min(slice_count(s), output_len);
+    i32 i = n;
+    while(i-- > 0)
+    {
+        *(output++) = *(s.end - i - 1);
+    }
+    return n;
+}
 
 #endif // MARROW_H

@@ -1,0 +1,8 @@
+{
+    "prvo": 123,
+    "cetrto": {
+        "aa": 128,
+        "bb": 2
+    },
+    "drugo": 123.123,
+    "tretje": "lep pozdrav"}

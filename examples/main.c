@@ -1,9 +1,37 @@
-#include <printccy/printccy.h>
 #include <marrow/marrow.h>
+#include <marrow/json.h>
+
+#include <stdio.h>
+
+int main()
+{
+    FILE* fp = fopen("stvari.json", "rb");
+    fseek(fp, 0, SEEK_END);
+    usize size = ftell(fp);
+    rewind(fp);
+    char buf[size];
+    fread(buf, 1, size, fp);
+    fclose(fp);
+
+    s8 file_slice = array_slice(buf);
+
+    mrw_debug("{}", file_slice);
+    JsonObject json = json_parse(file_slice);
+    mrw_debug("{}", file_slice);
+
+    for (JsonObject obj = json_next(json); obj.type; obj = json_next(obj))
+    {
+        mrw_debug("obj: {}", obj.label);
+        if (obj.type == JSON_INT)    mrw_debug("int: {}", obj.integer);
+        if (obj.type == JSON_OBJECT) mrw_debug("object");
+        if (obj.type == JSON_STRING) mrw_debug("string: {}", obj.string);
+        if (obj.type == JSON_FLOAT)  mrw_debug("float: {}", obj.decimal);
+    }
+}
 
 thread_local u32 thread_local_val = 0;
 
-int main(void)
+int main2(void)
 {
     u8   v_u8   = 1;
     u16  v_u16  = 2;
