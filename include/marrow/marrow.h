@@ -140,6 +140,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_end(s)               ((s).end)
 
 #define slice(ptr_start, ptr_end)  { .start = (ptr_start), .end = (ptr_end) }
+#define slice_dead(ptr)            slice((ptr), (ptr))
 #define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
 #define slice_to(ptr, count)       slice_range((ptr), 0, (count))
 
@@ -189,20 +190,21 @@ static inline char* s8_skip_until(s8 s, char c)
     return s.start;
 }
 
-static inline char* s8_skip_digit(s8 s)
+typedef enum CharFilter {
+    FILTER_DIGIT = 1 << 0,
+    FILTER_CHAR = 1 << 1,
+} CharFilter;
+
+static inline bool char_in_filter(char c, CharFilter filter)
 {
-    while(s.start != s.end && *s.start >= 48 && *s.start <= 57) s.start++;
-    return s.start;
+    if ((filter & FILTER_DIGIT) && (c >= 48 && c <= 57)) return true;
+    if ((filter & FILTER_CHAR) && ((c >= 65 && c <= 90) || (c == '_') || (c >= 97 && c <= 122))) return true;
+    return false;
 }
 
-static inline bool is_char(char c)
+static inline char* s8_skip(s8 s, CharFilter filter)
 {
-    return (c >= 65 && c <= 90) || (c == '_') || (c >= 97 && c <= 122);
-}
-
-static inline char* s8_skip_char(s8 s)
-{
-    while(s.start != s.end && is_char(*s.start)) s.start++;
+    while(s.start != s.end && char_in_filter(*s.start, filter)) s.start++;
     return s.start;
 }
 
@@ -445,10 +447,7 @@ int print_s8(char* output, size_t output_len, va_list* list, const char* args, s
     s8 s = va_arg(*list, s8);
     size_t n = min(slice_count(s), output_len);
     i32 i = n;
-    while(i-- > 0)
-    {
-        *(output++) = *(s.end - i - 1);
-    }
+    while(i-- > 0) *(output++) = *(s.end - i - 1);
     return n;
 }
 

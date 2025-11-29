@@ -1,8 +1,5 @@
 {
-    "prvo": 123,
-    "cetrto": {
-        "aa": 128,
-        "bb": 2
-    },
-    "drugo": 123.123,
-    "tretje": "lep pozdrav"}
+    "peto": [ 1, 3, ["lp", 2], {"mister": "pedr"}, 5],
+    "alo": "stari",
+    "1": 123.123
+}

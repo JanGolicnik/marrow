@@ -3,6 +3,30 @@
 
 #include <stdio.h>
 
+void print_json(JsonObject obj, bool print_label)
+{
+    if (print_label)
+        mrw_debug("{}", obj.label);
+    if (obj.val.type == JSON_INT)    mrw_debug("int: {}", obj.val.integer);
+    if (obj.val.type == JSON_OBJECT) {
+        mrw_debug("object");
+        for (obj = json_first(obj); obj.val.type; obj = json_next(obj))
+            print_json(obj, true);
+    }
+    if (obj.val.type == JSON_ARRAY)
+    {
+        mrw_debug("[");
+        for (obj = json_first(obj); obj.val.type; obj = json_next(obj))
+        {
+            print_json(obj, false);
+            mrw_debug(",");
+        }
+        mrw_debug("]");
+    }
+    if (obj.val.type == JSON_STRING) mrw_debug("string: {}", obj.val.string);
+    if (obj.val.type == JSON_FLOAT)  mrw_debug("float: {}", obj.val.decimal);
+}
+
 int main()
 {
     FILE* fp = fopen("stvari.json", "rb");
@@ -14,19 +38,11 @@ int main()
     fclose(fp);
 
     s8 file_slice = array_slice(buf);
-
-    mrw_debug("{}", file_slice);
     JsonObject json = json_parse(file_slice);
-    mrw_debug("{}", file_slice);
+    print_json(json, true);
 
-    for (JsonObject obj = json_next(json); obj.type; obj = json_next(obj))
-    {
-        mrw_debug("obj: {}", obj.label);
-        if (obj.type == JSON_INT)    mrw_debug("int: {}", obj.integer);
-        if (obj.type == JSON_OBJECT) mrw_debug("object");
-        if (obj.type == JSON_STRING) mrw_debug("string: {}", obj.string);
-        if (obj.type == JSON_FLOAT)  mrw_debug("float: {}", obj.decimal);
-    }
+    JsonObject alo = json_find(json, str("alo"));
+    mrw_debug("finding val of alo\n {}", alo.val.string);
 }
 
 thread_local u32 thread_local_val = 0;
