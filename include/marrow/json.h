@@ -4,27 +4,17 @@
 #include <marrow/marrow.h>
 
 typedef enum JsonType {
-    JSON_INVALID = 0,
-    JSON_OBJECT = 1,
-    JSON_ARRAY = 2,
-    JSON_UHHH = 3,
-    JSON_INT = 4,
-    JSON_SMALLINT = 8, // never exposed to the user
-    JSON_FLOAT = 12,
-    JSON_STRING = 16
+    JSON_INVALID,
+    JSON_OBJECT,
+    JSON_ARRAY,
+    JSON_INT,
+    JSON_SMALLINT, // never exposed to the user
+    JSON_FLOAT,
+    JSON_STRING
 } JsonType;
 
 // header inserted before every element
-struct (_Json)
-{
-    union {
-        u8 type : 8;
-        struct {
-            u8 has_children : 2;
-            u8 n_children : 6;
-        };
-    };
-};
+typedef u8 _Json;
 
 struct(JsonValue)
 {
@@ -42,7 +32,6 @@ struct(JsonValue)
 struct(JsonObject)
 {
     s8 label;
-    u32 _i;
     JsonValue val;
 };
 
@@ -58,7 +47,7 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
         value.start++;
         value = (s8)slice(value.start, s8_skip_until(value, '"'));
 
-        j->type = JSON_STRING;
+        *j = JSON_STRING;
         for (i32 i = 0; i < (i32)slice_count(value) - 1; i++)
             *((*buf)++) = value.start[i];
         *((*buf)++) = 0;
@@ -73,12 +62,11 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
             if (i <= 0) break;
         }
 
-        j->has_children = JSON_OBJECT;
-        j->n_children = 0;
+        *j = JSON_OBJECT;
         do {
-            j->n_children++;
             value = _json_parse_object(value, buf);
         } while(*value.start == ',');
+        *((*buf)++) = 0;
     }
     else if (*s.start == '[') { // array
         value.end = value.start;
@@ -90,18 +78,17 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
             if (i <= 0) break;
         }
 
-        j->has_children = JSON_ARRAY;
-        j->n_children = 0;
+        *j = JSON_ARRAY;
         value.start++;
 
         loop {
             value.start = s8_skip_while(value, ' ');
             value = _json_parse_value(value, buf);
-            j->n_children++;
             value.start = s8_skip_while(value, ' ');
             if (*value.start != ',') break;
             value.start++;
         }
+        *((*buf)++) = 0;
     }
     else { // int or float
         value.start = s8_skip_while(s, '-');
@@ -109,19 +96,19 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
         if (*value.end == '.')
         {
             value.end = s8_skip((s8)slice(value.end + 1, s.end), FILTER_DIGIT);
-            j->type = JSON_FLOAT;
+            *j = JSON_FLOAT;
             *((*(f32**)buf)++) = s8_parse_float(value);
         }
         else
         {
             i32 val = s8_parse_i32(value);
             if (val >= -128 && val <= 127){
-                j->type = JSON_SMALLINT;
+                *j = JSON_SMALLINT;
                 *((*(i8**)buf)++) = (i8)val;
             }
             else
             {
-                j->type = JSON_INT;
+                *j = JSON_INT;
                 *((*(i32**)buf)++) = val;
             }
         }
@@ -163,22 +150,23 @@ static inline JsonValue _json_value_from_bytes(char* p)
 {
     JsonValue val = { 0 };
     _Json j = *(_Json*)p;
-    val.type = j.type;
+    val.type = j;
     void* ptr = p + sizeof(_Json);
-    if (j.has_children == JSON_OBJECT)
+    if (val.type == JSON_OBJECT)
     {
-        val.type = JSON_OBJECT;
-        for (i32 i = 0; i < j.n_children; i++)
-        {
+        loop {
             JsonObject child = _json_object_from_bytes((char*)ptr + val._size);
             val._size += slice_size(child.label) + child.val._size + sizeof(_Json);
+            if (child.val.type == JSON_INVALID) break;
         }
     }
-    else if (j.has_children == JSON_ARRAY)
+    else if (val.type == JSON_ARRAY)
     {
-        val.type = JSON_ARRAY;
-        for (i32 i = 0; i < j.n_children; i++)
-            val._size += _json_value_from_bytes((char*)ptr + val._size)._size + sizeof(_Json);
+        loop {
+            JsonValue v = _json_value_from_bytes((char*)ptr + val._size);
+            val._size += v._size + sizeof(_Json);
+            if (v.type == JSON_INVALID) break;
+        }
     }
     else if (val.type == JSON_INT){
         val._size = sizeof(i32);
@@ -212,18 +200,14 @@ static inline JsonObject _json_object_from_bytes(char* p)
 
 static inline JsonObject json_next(JsonObject json)
 {
-    if (json.val.type == JSON_INVALID || json._i == 1) return (JsonObject) { 0 };
-    JsonObject obj = _json_object_from_bytes(json.label.end + sizeof(_Json) + json.val._size);
-    obj._i = json._i - 1;
-    return obj;
+    if (json.val.type == JSON_INVALID) return (JsonObject) { 0 };
+    return _json_object_from_bytes(json.label.end + sizeof(_Json) + json.val._size);
 }
 
 static inline JsonObject json_first(JsonObject json)
 {
     if (json.val.type != JSON_OBJECT && json.val.type != JSON_ARRAY) return (JsonObject) { 0 };
-    JsonObject obj = _json_object_from_bytes(json.label.end + sizeof(_Json));
-    obj._i = ((_Json*)json.label.end)->n_children;
-    return obj;
+    return _json_object_from_bytes(json.label.end + sizeof(_Json));
 }
 
 static inline JsonObject json_find(JsonObject json, s8 label)

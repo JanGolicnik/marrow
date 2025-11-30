@@ -38,7 +38,9 @@ int main()
     fclose(fp);
 
     s8 file_slice = array_slice(buf);
+    mrw_debug("{}", file_slice);
     JsonObject json = json_parse(file_slice);
+    mrw_debug("{}", file_slice);
     print_json(json, true);
 
     JsonObject alo = json_find(json, str("alo"));
