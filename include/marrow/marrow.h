@@ -166,6 +166,13 @@ static inline void buf_set(void* dst, u8 value, usize len)
     struct name
 #endif // struct
 
+#ifndef union
+#define union(name)         \
+    typedef union name name;\
+    typedef SLICE(name) name##Slice;\
+    union name
+#endif // union
+
 typedef SLICE(char) s8;
 typedef SLICE(u8) u8Slice;
 #define str(s) ((s8)slice_to(s, str_len(s)))
@@ -177,6 +184,8 @@ static inline u32 str_len(const char* str)
     while (*iter) iter++;
     return iter - str;
 }
+
+static inline usize s8_len(s8 s) { return slice_size(s); }
 
 static inline char* s8_skip_while(s8 s, char c)
 {
@@ -202,7 +211,7 @@ static inline bool char_in_filter(char c, CharFilter filter)
     return false;
 }
 
-static inline char* s8_skip(s8 s, CharFilter filter)
+static inline char* s8_skip_filter(s8 s, CharFilter filter)
 {
     while(s.start != s.end && char_in_filter(*s.start, filter)) s.start++;
     return s.start;
@@ -425,8 +434,8 @@ thread_local u32 _format_buf_len;
 #define mrw_format_slice(f, slice, ...)\
 (\
     _format_buf = (slice),\
-    _format_buf_len = min((usize)print(0, 0, f, __VA_ARGS__), slice_count(_format_buf)),\
-    (void)print((char*)_format_buf.start, slice_count(_format_buf), f, __VA_ARGS__),\
+    _format_buf_len = min((usize)print(0, 0, f, __VA_ARGS__), slice_size(_format_buf)),\
+    (void)print((char*)_format_buf.start, slice_size(_format_buf), f, __VA_ARGS__),\
     _format_buf.end = _format_buf.start + _format_buf_len,\
     _format_buf\
 )
@@ -445,7 +454,7 @@ thread_local u32 _format_buf_len;
 
 int print_s8(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
     s8 s = va_arg(*list, s8);
-    size_t n = min(slice_count(s), output_len);
+    size_t n = min(slice_size(s), output_len);
     i32 i = n;
     while(i-- > 0) *(output++) = *(s.end - i - 1);
     return n;

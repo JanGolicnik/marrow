@@ -3,24 +3,53 @@
 
 #include <marrow/marrow.h>
 
+#define _JSON_DELIM    (*(u8*)&(_Json){.always_negtwo = -2})
+#define _JSON_IS_DELIM(p) (((_Json*)(p))->always_negtwo == -2)
+
 typedef enum JsonType {
     JSON_INVALID,
     JSON_OBJECT,
     JSON_ARRAY,
+    JSON_STRING,
     JSON_INT,
-    JSON_SMALLINT, // never exposed to the user
-    JSON_FLOAT,
-    JSON_STRING
+    JSON_FLOAT
 } JsonType;
 
+typedef enum _JsonType {
+    _JSON_OBJECT = 1,
+    _JSON_ARRAY = 2,
+    _JSON_STRING = 3,
+    _JSON_INVALID = 0,
+    _JSON_INT = 1,
+    _JSON_SMALLINT = 2,
+    _JSON_FLOAT = 3
+} _JsonType;
+
 // header inserted before every element
-typedef u8 _Json;
+union(_Json)
+{
+    struct {
+        u8 _1 : 2;
+        u8 type : 4;
+        u8 _2 : 2;
+    };
+    struct {
+        u8 dynamic_size : 2;
+        u8 size_exponent : 4;
+        u8 _3 : 2;
+    };
+    struct {
+        u8 _4 : 2;
+        u8 _5 : 4;
+        i8 always_negtwo : 2;
+    };
+};
 
 struct(JsonValue)
 {
-    u32 _size; // cached size to know where next element starts in buffer
+    u64 _size; // cached size to know where next element starts in buffer
     JsonType type;
-    union{
+    union {
         i32 integer;
         f32 decimal;
         s8 string;
@@ -40,17 +69,17 @@ static inline s8 _json_parse_object(s8 s, u8** buf);
 static inline s8 _json_parse_value(s8 s, u8** buf)
 {
     // reserve header
-    _Json* j = (*(_Json**)buf)++;
-
+    _Json* header_ptr = (*(_Json**)buf)++;
+    _Json header = { .always_negtwo = -2 };
     s8 value = s;
     if (*s.start == '"') { // string
         value.start++;
         value = (s8)slice(value.start, s8_skip_until(value, '"'));
 
-        *j = JSON_STRING;
+        header.dynamic_size = _JSON_STRING;
         for (i32 i = 0; i < (i32)slice_count(value) - 1; i++)
             *((*buf)++) = value.start[i];
-        *((*buf)++) = 0;
+        *((*buf)++) = _JSON_DELIM;
     }
     else if (*s.start == '{') { // object
         value.end = value.start;
@@ -62,11 +91,12 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
             if (i <= 0) break;
         }
 
-        *j = JSON_OBJECT;
+        header.dynamic_size = _JSON_OBJECT;
+        char* start = value.start;
         do {
             value = _json_parse_object(value, buf);
         } while(*value.start == ',');
-        *((*buf)++) = 0;
+        *((*buf)++) = _JSON_DELIM;
     }
     else if (*s.start == '[') { // array
         value.end = value.start;
@@ -77,10 +107,9 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
             value.end++;
             if (i <= 0) break;
         }
-
-        *j = JSON_ARRAY;
+        header.dynamic_size = _JSON_ARRAY;
         value.start++;
-
+        char* start = value.start;
         loop {
             value.start = s8_skip_while(value, ' ');
             value = _json_parse_value(value, buf);
@@ -88,32 +117,32 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
             if (*value.start != ',') break;
             value.start++;
         }
-        *((*buf)++) = 0;
+        *((*buf)++) = _JSON_DELIM;
     }
     else { // int or float
         value.start = s8_skip_while(s, '-');
-        value.end = s8_skip(value, FILTER_DIGIT);
+        value.end = s8_skip_filter(value, FILTER_DIGIT);
         if (*value.end == '.')
         {
-            value.end = s8_skip((s8)slice(value.end + 1, s.end), FILTER_DIGIT);
-            *j = JSON_FLOAT;
+            value.end = s8_skip_filter((s8)slice(value.end + 1, s.end), FILTER_DIGIT);
+            header.type = _JSON_FLOAT;
             *((*(f32**)buf)++) = s8_parse_float(value);
         }
         else
         {
             i32 val = s8_parse_i32(value);
             if (val >= -128 && val <= 127){
-                *j = JSON_SMALLINT;
+                header.type = _JSON_SMALLINT;
                 *((*(i8**)buf)++) = (i8)val;
             }
             else
             {
-                *j = JSON_INT;
+                header.type = _JSON_INT;
                 *((*(i32**)buf)++) = val;
             }
         }
     }
-
+    *header_ptr = header;
     return (s8)slice(value.end, s.end);
 }
 
@@ -121,8 +150,8 @@ static inline s8 _json_parse_object(s8 s, u8** buf)
 {
     s8 label = s;
     label.start = s8_skip_until(s, '"');
-    s.start = label.end = s8_skip_until(label, '"') - 1;
-
+    s.start = s8_skip_until(label, '"');
+    label.end = s.start - 1;
     slice_for_each(label, c)
         *((*buf)++) = *c;
 
@@ -139,7 +168,7 @@ static inline JsonObject json_parse(s8 s)
 
     s.start = s8_skip_while(s, ' ');
     _json_parse_value(s, &buf);
-    *(buf++) = 0;
+    *(buf++) = _JSON_DELIM;
 
     s8 l = (s8)slice((char*)original_buffer.start, (char*)original_buffer.start);
     return (JsonObject){ .label = l, .val.type = JSON_OBJECT, };
@@ -150,50 +179,55 @@ static inline JsonValue _json_value_from_bytes(char* p)
 {
     JsonValue val = { 0 };
     _Json j = *(_Json*)p;
-    val.type = j;
-    void* ptr = p + sizeof(_Json);
-    if (val.type == JSON_OBJECT)
+    p += sizeof(_Json);
+    if (j.dynamic_size == _JSON_OBJECT)
     {
+        val.type = JSON_OBJECT;
         loop {
-            JsonObject child = _json_object_from_bytes((char*)ptr + val._size);
+            JsonObject child = _json_object_from_bytes(p + val._size);
             val._size += slice_size(child.label) + child.val._size + sizeof(_Json);
             if (child.val.type == JSON_INVALID) break;
         }
     }
-    else if (val.type == JSON_ARRAY)
+    else if (j.dynamic_size == _JSON_ARRAY)
     {
+        val.type = JSON_ARRAY;
         loop {
-            JsonValue v = _json_value_from_bytes((char*)ptr + val._size);
+            JsonValue v = _json_value_from_bytes(p + val._size);
             val._size += v._size + sizeof(_Json);
             if (v.type == JSON_INVALID) break;
         }
     }
-    else if (val.type == JSON_INT){
-        val._size = sizeof(i32);
-        val.integer = *(i32*)ptr;
+    else if (j.dynamic_size == _JSON_STRING)
+    {
+        val.type = JSON_STRING;
+        val.string = (s8)slice(p, p);
+        while(!_JSON_IS_DELIM(val.string.end)) val.string.end++;
+        val._size = slice_size(val.string) + 1;
     }
-    else if (val.type == JSON_SMALLINT){
+    else if (j.type == _JSON_INT){
+        val.type = JSON_INT;
+        val._size = sizeof(i32);
+        val.integer = *(i32*)p;
+    }
+    else if (j.type == _JSON_SMALLINT){
         val.type = JSON_INT;
         val._size = sizeof(i8);
-        val.integer = *(i8*)ptr;
+        val.integer = *(i8*)p;
     }
-    else if (val.type == JSON_FLOAT)
+    else if (j.type == _JSON_FLOAT)
     {
+        val.type = JSON_FLOAT;
         val._size = sizeof(f32);
-        val.decimal = *(f32*)ptr;
-    }
-    else if (val.type == JSON_STRING)
-    {
-        val.string = (s8)slice(ptr, ptr);
-        do {val._size++;} while(*(val.string.end++));
+        val.decimal = *(f32*)p;
     }
     return val;
 }
 
 static inline JsonObject _json_object_from_bytes(char* p)
 {
-    JsonObject obj = { 0 };
-    obj.label = (s8)slice(p, s8_skip((s8)slice_to(p, 9999), FILTER_DIGIT | FILTER_CHAR));
+    JsonObject obj = { .label = { .start = p, .end = p } };
+    while(!_JSON_IS_DELIM(obj.label.end)) obj.label.end++;
     obj.val = _json_value_from_bytes((char*)obj.label.end);
     return obj;
 }
@@ -215,6 +249,31 @@ static inline JsonObject json_find(JsonObject json, s8 label)
     for (json = json_first(json); json.val.type; json = json_next(json))
         if (s8_cmp(json.label, label) == 0) break;
     return json;
+}
+
+static inline usize json_stringify(JsonObject json, s8 s, bool print_label)
+{
+    s8 original_s = s;
+    if (print_label && slice_size(json.label) > 0)
+        s.start += print(s.start, slice_size(s), "\"{}\": ", json.label);
+    if (json.val.type == JSON_INT)
+        s.start += print(s.start, slice_size(s), "{}", json.val.integer);
+    else if (json.val.type == JSON_STRING)
+        s.start += print(s.start, slice_size(s), "\"{}\"", json.val.string);
+    else if (json.val.type == JSON_FLOAT)
+        s.start += print(s.start, slice_size(s), "{}", json.val.decimal);
+    else {
+        *(s.start++) = json.val.type == JSON_OBJECT ? '{' : '[';
+        for (json = json_first(json); json.val.type; json = json_next(json))
+        {
+            s.start += json_stringify(json, s, true);
+            *(s.start++) = ',';
+            *(s.start++) = ' ';
+        }
+        s.start -= 2;
+        *(s.start++) = json.val.type == JSON_OBJECT ? '}' : ']';
+    }
+    return s.start - original_s.start;
 }
 
 #endif // JSON_H
