@@ -38,7 +38,7 @@ int main()
     fclose(fp);
 
     s8 file_slice = array_slice(buf);
-    /* mrw_debug("{}", file_slice); */
+    mrw_debug("{}", file_slice);
     JsonObject json = json_parse(file_slice);
     /* mrw_debug("{}", file_slice); */
     /* print_json(json, true); */
@@ -46,9 +46,12 @@ int main()
     /* JsonObject alo = json_find(json, str("alo")); */
     /* mrw_debug("finding val of alo\n {}", alo.val.string); */
     char output_buf[1024] = { 0 };
-    s8 output_buf_slice = array_slice(output_buf);
-    output_buf_slice.end = output_buf_slice.start + json_stringify(json, output_buf_slice, false);
-    mrw_debug("{}", output_buf_slice);
+    s8 output = array_slice(output_buf);
+    output.end = output.start + json_stringify(json, output, false);
+    mrw_debug("{}", output);
+
+    FILE* wfp = fopen("stvari2.json", "wb");
+    fwrite(output.start, slice_size(output), 1, wfp);
 }
 
 thread_local u32 thread_local_val = 0;

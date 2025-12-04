@@ -112,6 +112,7 @@ static inline u8 i32_n_digits(i32 v)
 
 #ifndef array_len
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
+#define array_size(arr) (sizeof((arr)))
 #define array_slice(arr) slice_to((arr), array_len((arr)))
 #define array_for_each(arr, ptr) for(typeof(*(arr))* ptr = (arr); (ptr) < ((arr) + array_len((arr))); (ptr)++)
 #define array_for_each_i(arr, i) for(usize i = 0; (i) < array_len((arr)); (i)++)
@@ -144,11 +145,12 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
 #define slice_to(ptr, count)       slice_range((ptr), 0, (count))
 
+#define slice_back(s, count)       slice(slice_start((s)), slice_end((s)) - count)
 #define slice_advance(s, count)    slice_range((s).start, count, slice_count((s)))
 
 #define slice_t(s, t)              ((t ## Slice)slice((t*)slice_start((s)), (t*)slice_end((s))))
 
-#define slice_count(s)             ((usize)(slice_end((s)) - slice_start((s))))
+#define slice_count(s)             ((usize)(slice_end((s)) > slice_start((s)) ? (slice_end((s)) - slice_start((s))) : 0))
 #define slice_size(s)              (slice_count(s) * sizeof(*slice_start((s))))
 
 #define slice_for_each(s, ptr)     for(typeof(slice_start((s))) ptr = slice_start((s)); ptr != slice_end((s)); ptr++)
@@ -158,6 +160,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_copy(s, from)        slice_copy_ptr(s, slice_start(from))
 #define slice_cmp(a, b)            buf_cmp((void*)slice_start(a), (void*)slice_start(b), min(slice_size((a)), slice_size((b))))
 #define slice_set(s, value)        do { slice_for_each(s, ptr) (*ptr) = (value); } while(false)
+#define slice_fill(s, s2)          do { for(u32 i = 0; i < slice_size((s)); i+=slice_size((s2))) buf_copy(s.start + i, s2.start, slice_size(s2)); } while(false)
 
 #ifndef struct
 #define struct(name)         \
@@ -175,7 +178,8 @@ static inline void buf_set(void* dst, u8 value, usize len)
 
 typedef SLICE(char) s8;
 typedef SLICE(u8) u8Slice;
-#define str(s) ((s8)slice_to(s, str_len(s)))
+#define str(s)                     ((s8)slice_to(s, str_len(s)))
+#define sstr(s)                    slice_to(s, array_len(s) - 1)
 #define slice_bytes(s)             slice_t(s, u8)
 
 static inline u32 str_len(const char* str)

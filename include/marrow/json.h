@@ -251,10 +251,22 @@ static inline JsonObject json_find(JsonObject json, s8 label)
     return json;
 }
 
-static inline usize json_stringify(JsonObject json, s8 s, bool print_label)
+struct(JsonStringifyConfig) {
+    s8 indent;
+    s8 newline;
+    u32 _i;
+};
+
+static inline usize json_stringify(JsonObject json, s8 s, JsonStringifyConfig* config)
 {
+    static JsonStringifyConfig default_stringify = { .indent = sstr("\t"), .newline = sstr("\n") };
+    if (config == nullptr) config = &default_stringify;
     s8 original_s = s;
-    if (print_label && slice_size(json.label) > 0)
+    char indent_buf[slice_size(config->indent) * config->_i];
+    s8 indent = (s8)array_slice(indent_buf);
+    slice_fill(indent, config->indent);
+    if (slice_size(indent) > 0) s.start += print(s.start, slice_size(s), "{}{}", config->newline, indent);
+    if (slice_size(json.label) > 0)
         s.start += print(s.start, slice_size(s), "\"{}\": ", json.label);
     if (json.val.type == JSON_INT)
         s.start += print(s.start, slice_size(s), "{}", json.val.integer);
@@ -264,14 +276,16 @@ static inline usize json_stringify(JsonObject json, s8 s, bool print_label)
         s.start += print(s.start, slice_size(s), "{}", json.val.decimal);
     else {
         *(s.start++) = json.val.type == JSON_OBJECT ? '{' : '[';
-        for (json = json_first(json); json.val.type; json = json_next(json))
+        config->_i++;
+        for (JsonObject child = json_first(json); child.val.type; child = json_next(child))
         {
-            s.start += json_stringify(json, s, true);
+            s.start += json_stringify(child, s, config);
             *(s.start++) = ',';
-            *(s.start++) = ' ';
         }
-        s.start -= 2;
+        s.start -= 1;
+        s.start += print(s.start, slice_size(s), "{}{}", config->newline, indent);
         *(s.start++) = json.val.type == JSON_OBJECT ? '}' : ']';
+        config->_i--;
     }
     return s.start - original_s.start;
 }
