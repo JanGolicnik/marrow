@@ -92,7 +92,6 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
         }
 
         header.dynamic_size = _JSON_OBJECT;
-        char* start = value.start;
         do {
             value = _json_parse_object(value, buf);
         } while(*value.start == ',');
@@ -109,7 +108,6 @@ static inline s8 _json_parse_value(s8 s, u8** buf)
         }
         header.dynamic_size = _JSON_ARRAY;
         value.start++;
-        char* start = value.start;
         loop {
             value.start = s8_skip_while(value, ' ');
             value = _json_parse_value(value, buf);

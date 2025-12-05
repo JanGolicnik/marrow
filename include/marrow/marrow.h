@@ -157,6 +157,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_for_each_i(s, i)     for(usize i = 0; (slice_start((s)) + (i)) != slice_end((s)); i++)
 
 #define slice_copy_ptr(s, from)    buf_copy((void*)slice_start((s)), (void*)(from), slice_size((s)))
+#define slice_copy_to_ptr(s, to)   buf_copy((void*)(to), (void*)slice_start((s)), slice_size((s)))
 #define slice_copy(s, from)        slice_copy_ptr(s, slice_start(from))
 #define slice_cmp(a, b)            buf_cmp((void*)slice_start(a), (void*)slice_start(b), min(slice_size((a)), slice_size((b))))
 #define slice_set(s, value)        do { slice_for_each(s, ptr) (*ptr) = (value); } while(false)
@@ -447,6 +448,10 @@ thread_local u32 _format_buf_len;
 #ifndef mrw_debug
 #define mrw_debug(f, ...) do { printfb(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_debug
+
+#ifndef mrw_debug_val
+#define mrw_debug_val(val) mrw_debug( #val ": {}", val)
+#endif // mrw_debug_val
 
 #ifndef mrw_error
 #define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
