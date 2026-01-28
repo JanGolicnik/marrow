@@ -416,17 +416,17 @@ static inline HSV rgb_to_hsv(u32 color) {
 #define push_stream(stream) fflush(stream)
 #endif // push_stream
 
-#ifndef mrw_debug_color
-#define mrw_debug_color "\x1b[92m"
-#endif // mrw_debug_color
-
-#ifndef mrw_error_color
-#define mrw_error_color "\x1b[91m"
-#endif // mrw_error_color
-
-#ifndef mrw_text_color
-#define mrw_text_color "\x1b[0m\x1b[90m"
-#endif // mrw_text_color
+#ifdef __EMSCRIPTEN__
+    #define mrw_debug_color
+    #define mrw_error_color
+    #define mrw_text_color
+    #define mrw_text_color2
+#else
+    #define mrw_debug_color "\x1b[92m"
+    #define mrw_error_color "\x1b[91m"
+    #define mrw_text_color "\x1b[0m\x1b[90m"
+    #define mrw_text_color2 "\x1b[0m"
+#endif
 
 thread_local s8 _format_buf;
 thread_local u32 _format_buf_len;
@@ -448,7 +448,7 @@ thread_local u32 _format_buf_len;
 )
 
 #ifndef mrw_debug
-#define mrw_debug(f, ...) do { printfb(stderr, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define mrw_debug(f, ...) do { printfb(stdout, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_debug
 
 #ifndef mrw_debug_val
@@ -456,11 +456,11 @@ thread_local u32 _format_buf_len;
 #endif // mrw_debug_val
 
 #ifndef mrw_error
-#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_error
 
 #ifndef mrw_abort
-#define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
+#define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
 #endif // mrw_abort
 
 int print_s8(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
