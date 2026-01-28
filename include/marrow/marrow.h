@@ -24,7 +24,9 @@ typedef uintmax_t     usize;
 typedef float         f32;
 typedef double        f64;
 
+#ifndef __EMSCRIPTEN__
 typedef _Bool         bool;
+#endif
 
 #define U8_MAX  UINT8_MAX
 #define U16_MAX UINT16_MAX
@@ -163,19 +165,19 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_set(s, value)        do { slice_for_each(s, ptr) (*ptr) = (value); } while(false)
 #define slice_fill(s, s2)          do { for(u32 i = 0; i < slice_size((s)); i+=slice_size((s2))) buf_copy(s.start + i, s2.start, slice_size(s2)); } while(false)
 
-#ifndef struct
-#define struct(name)         \
+#ifndef STRUCT
+#define STRUCT(name)         \
     typedef struct name name;\
     typedef SLICE(name) name##Slice;\
     struct name
-#endif // struct
+#endif // STRUCT
 
-#ifndef union
-#define union(name)         \
+#ifndef UNION
+#define UNION(name)         \
     typedef union name name;\
     typedef SLICE(name) name##Slice;\
     union name
-#endif // union
+#endif // UNION
 
 typedef SLICE(char) s8;
 typedef SLICE(u8) u8Slice;
@@ -350,7 +352,7 @@ static inline u32 to_byte(f32 x){
     return (u32)v;
 }
 
-struct(HSV) {
+STRUCT(HSV) {
     f32 hue;
     f32 saturation;
     f32 value;
