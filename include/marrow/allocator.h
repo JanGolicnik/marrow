@@ -141,7 +141,7 @@ static inline void* bump_allocator_alloc(void* allocator, usize size, usize alig
 
 static inline void bump_allocator_free(void* allocator, void* ptr, usize size) { return; }
 
-static inline BumpAllocator bump_allocator_create()
+static inline BumpAllocator bump_allocator_create(void)
 {
     return (BumpAllocator) {
         .allocator.alloc = bump_allocator_alloc,
