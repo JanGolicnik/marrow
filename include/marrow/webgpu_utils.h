@@ -3,6 +3,7 @@
 
 #ifndef __EMSCRIPTEN__
 #   include <glfw/glfw3.h>
+#   define GLFW_EXPOSE_NATIVE_WIN32
 #   include <glfw/glfw3native.h>
 #endif
 
@@ -37,7 +38,9 @@ static WGPUAdapter get_adapter(WGPUInstance instance, WGPURequestAdapterOptions 
         .callback = request_adapter_callback,
         .userdata1 = &request_adapter_user_data
     });
-    while(!request_adapter_user_data.request_done) emscripten_sleep(100);
+    #ifdef __EMSCRIPTEN__
+        while(!request_adapter_user_data.request_done) emscripten_sleep(100);
+    #endif
     return request_adapter_user_data.adapter;
 }
 
@@ -85,18 +88,20 @@ static WGPUDevice get_device(WGPUAdapter adapter)
             .userdata1 = &request_device_user_data
         }
     );
-    while(!request_device_user_data.request_done) emscripten_sleep(100);
+    #ifdef __EMSCRIPTEN__
+        while(!request_device_user_data.request_done) emscripten_sleep(100);
+    #endif
     return request_device_user_data.device;
 }
 
 static WGPUSurface get_surface(WGPUInstance instance
 #ifndef __EMSCRIPTEN__
-    , GLFWWindow* window
+    , GLFWwindow* window
 #endif
 ) {
     return wgpuInstanceCreateSurface(instance, &(WGPUSurfaceDescriptor) {
-        surfaceDescriptor.label = (WGPUStringView){ NULL, WGPU_STRLEN };
-        surfaceDescriptor.nextInChain =
+        .label = (WGPUStringView){ NULL, WGPU_STRLEN },
+        .nextInChain = (WGPUChainedStruct*)
     #ifdef __EMSCRIPTEN__
         &(WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
             .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
@@ -106,7 +111,7 @@ static WGPUSurface get_surface(WGPUInstance instance
         &(WGPUSurfaceSourceWindowsHWND) {
             .chain.sType = WGPUSType_SurfaceSourceWindowsHWND,
             .hinstance = GetModuleHandle(NULL),
-            .hwnd = glfwGetWind32Window(window)
+            .hwnd = glfwGetWin32Window(window)
         },
     #endif
     });
