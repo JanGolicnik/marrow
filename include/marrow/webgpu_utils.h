@@ -104,8 +104,8 @@ static WGPUSurface get_surface(WGPUInstance instance
         .nextInChain = (WGPUChainedStruct*)
     #ifdef __EMSCRIPTEN__
         &(WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
-            .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
-            .selector = (WGPUStringView){ "canvas", WGPU_STRLEN };
+            .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector,
+            .selector = (WGPUStringView){ "canvas", WGPU_STRLEN },
         },
     #else
         &(WGPUSurfaceSourceWindowsHWND) {
