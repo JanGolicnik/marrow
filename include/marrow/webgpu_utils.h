@@ -1,6 +1,11 @@
 #include <webgpu/webgpu.h>
 #include <marrow/marrow.h>
 
+#ifndef __EMSCRIPTEN__
+#   include <glfw/glfw3.h>
+#   include <glfw/glfw3native.h>
+#endif
+
 #define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
 #define WEBGPU_STR(str) (WGPUStringView) { .data = str, .length = WGPU_STRLEN }
 
@@ -84,13 +89,49 @@ static WGPUDevice get_device(WGPUAdapter adapter)
     return request_device_user_data.device;
 }
 
-static WGPUSurface get_surface(WGPUInstance instance)
-{
-    WGPUEmscriptenSurfaceSourceCanvasHTMLSelector fromCanvasHTMLSelector = { 0 };
-    fromCanvasHTMLSelector.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
-    fromCanvasHTMLSelector.selector = (WGPUStringView){ "canvas", WGPU_STRLEN };
-    WGPUSurfaceDescriptor surfaceDescriptor;
-    surfaceDescriptor.nextInChain = &fromCanvasHTMLSelector.chain;
-    surfaceDescriptor.label = (WGPUStringView){ NULL, WGPU_STRLEN };
-    return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+static WGPUSurface get_surface(WGPUInstance instance
+#ifndef __EMSCRIPTEN__
+    , GLFWWindow* window
+#endif
+) {
+    return wgpuInstanceCreateSurface(instance, &(WGPUSurfaceDescriptor) {
+        surfaceDescriptor.label = (WGPUStringView){ NULL, WGPU_STRLEN };
+        surfaceDescriptor.nextInChain =
+    #ifdef __EMSCRIPTEN__
+        &(WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
+            .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
+            .selector = (WGPUStringView){ "canvas", WGPU_STRLEN };
+        },
+    #else
+        &(WGPUSurfaceSourceWindowsHWND) {
+            .chain.sType = WGPUSType_SurfaceSourceWindowsHWND,
+            .hinstance = GetModuleHandle(NULL),
+            .hwnd = glfwGetWind32Window(window)
+        },
+    #endif
+    });
+}
+
+#define wgpu_stencil_keep_always (WGPUStencilFaceState){\
+    .compare = WGPUCompareFunction_Always,\
+    .failOp = WGPUStencilOperation_Keep,\
+    .depthFailOp = WGPUStencilOperation_Keep,\
+    .passOp = WGPUStencilOperation_Keep\
+}
+
+#define wgpu_color_blend_state (WGPUBlendComponent){\
+    .srcFactor = WGPUBlendFactor_SrcAlpha,\
+    .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,\
+    .operation = WGPUBlendOperation_Add\
+}
+
+#define wgpu_alpha_blend_state (WGPUBlendComponent){\
+    .srcFactor = WGPUBlendFactor_Zero,\
+    .dstFactor = WGPUBlendFactor_One,\
+    .operation = WGPUBlendOperation_Add\
+}
+
+#define wgpu_normal_blend_state (WGPUBlendState){\
+    .color = wgpu_color_blend_state,\
+    .alpha = wgpu_alpha_blend_state\
 }
