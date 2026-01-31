@@ -105,6 +105,9 @@ static inline f32 wrap_float(f32 val, f32 max) {
 #define is_between_inclusive(val, low, high) ((val) >= (low) && (val) <= (high))
 #endif // is_between_inclusive
 
+#define to_rad(val) ((val) * 0.0174532925)
+#define to_deg(val) ((val) * 57.2957795)
+
 static inline u8 i32_n_digits(i32 v)
 {
     u8 n = 0;
@@ -252,6 +255,14 @@ static inline f32 s8_parse_float(s8 s)
     return (f32)s8_parse_i32(whole) + (f32)wholei / (f32)pow(10, i32_n_digits(wholei)) * (negate ? -1.0 : 1.0f);
 }
 
+static inline i32 str_cmp(const void* a, const void* b)
+{
+    u8 *ap = (u8*)a, *bp = (u8*)b;
+    for (u32 i = 0; *(ap++) && *(bp++); i++)
+        if (((u8*)a)[i] != ((u8*)b)[i])
+            return (i32)((u8*)a)[i] - (i32)((u8*)b)[i];
+    return 0;
+}
 static inline i32 s8_cmp(s8 a, s8 b)
 {
     u32 a_count = slice_count(a);
