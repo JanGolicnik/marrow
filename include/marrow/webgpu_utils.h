@@ -117,6 +117,47 @@ static WGPUSurface get_surface(WGPUInstance instance
     });
 }
 
+typedef struct WGPUDynamicBuffer
+{
+    WGPUBuffer data;
+    WGPUBufferUsage usage;
+    u32 count;
+    u32 element_size;
+} WGPUDynamicBuffer;
+
+void wgpuDeviceDynamicBufferEnsure(WGPUDevice device, WGPUDynamicBuffer* buffer, u32 count)
+{
+    if (buffer->count >= count) return;
+    buffer->count = count;
+    if (buffer->data) wgpuBufferRelease(buffer->data);
+    buffer->data =  wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
+        .size = buffer->count * buffer->element_size,
+        .usage = buffer->usage
+    });
+}
+
+WGPUDynamicBuffer wgpuDeviceCreateDynamicBuffer(WGPUDevice device, u32 count, u32 element_size, WGPUBufferUsage usage)
+{
+    WGPUDynamicBuffer buffer = { .element_size = element_size, .usage = usage };
+    wgpuDeviceDynamicBufferEnsure(device, &buffer, count);
+    return buffer;
+}
+
+WGPUShaderModule load_shader_module_from_file(WGPUDevice device, const char* path)
+{
+    FILE *fp = fopen(path, "rb"); fseek(fp, 0, SEEK_END);
+    u64 len = ftell(fp); fseek(fp, 0, SEEK_SET);
+    char shader_code[len + 1]; fread(shader_code, 1, len, fp);
+    shader_code[len] = 0; fclose(fp);
+    return wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor) {
+        .label = WEBGPU_STR("planet shader descriptor"),
+        .nextInChain = (WGPUChainedStruct*)&(WGPUShaderSourceWGSL) {
+            .chain.sType = WGPUSType_ShaderSourceWGSL,
+            .code = WEBGPU_STR(shader_code)
+        }
+    });
+}
+
 #define wgpu_stencil_keep_always (WGPUStencilFaceState){\
     .compare = WGPUCompareFunction_Always,\
     .failOp = WGPUStencilOperation_Keep,\
