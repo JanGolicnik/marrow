@@ -26,7 +26,7 @@ typedef enum _JsonType {
 } _JsonType;
 
 // header inserted before every element
-union(_Json)
+UNION(_Json)
 {
     struct {
         u8 _1 : 2;
@@ -45,7 +45,7 @@ union(_Json)
     };
 };
 
-struct(JsonValue)
+STRUCT(JsonValue)
 {
     u64 _size; // cached size to know where next element starts in buffer
     JsonType type;
@@ -58,7 +58,7 @@ struct(JsonValue)
 
 // this sorta mimics the actual in memory layout
 // [label]<type>[data], and label.end points to type
-struct(JsonObject)
+STRUCT(JsonObject)
 {
     s8 label;
     JsonValue val;
@@ -249,7 +249,7 @@ static inline JsonObject json_find(JsonObject json, s8 label)
     return json;
 }
 
-struct(JsonStringifyConfig) {
+STRUCT(JsonStringifyConfig) {
     s8 indent;
     s8 newline;
     u32 _i;

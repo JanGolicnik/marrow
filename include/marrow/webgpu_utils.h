@@ -2,9 +2,14 @@
 #include <marrow/marrow.h>
 
 #ifndef __EMSCRIPTEN__
-#   include <glfw/glfw3.h>
-#   define GLFW_EXPOSE_NATIVE_WIN32
-#   include <glfw/glfw3native.h>
+    #include <GLFW/glfw3.h>
+    #if defined(_WIN32)
+        #define GLFW_EXPOSE_NATIVE_WIN32
+    #elif defined(__linux__)
+        #define GLFW_EXPOSE_NATIVE_X11
+        #define GLFW_EXPOSE_NATIVE_WAYLAND
+    #endif
+    #include <GLFW/glfw3native.h>
 #endif
 
 #define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
@@ -99,14 +104,27 @@ static WGPUSurface get_surface(WGPUInstance instance
     , GLFWwindow* window
 #endif
 ) {
+    i32 platform = glfwGetPlatform();
     return wgpuInstanceCreateSurface(instance, &(WGPUSurfaceDescriptor) {
         .label = (WGPUStringView){ NULL, WGPU_STRLEN },
         .nextInChain = (WGPUChainedStruct*)
-    #ifdef __EMSCRIPTEN__
+    #if defined(__EMSCRIPTEN__)
         &(WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
             .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector,
             .selector = (WGPUStringView){ "canvas", WGPU_STRLEN },
         },
+    #elif defined(__linux__)
+        (platform == GLFW_PLATFORM_X11 ?
+        (void*)&(WGPUSurfaceSourceXlibWindow) {
+            .chain.sType =  WGPUSType_SurfaceSourceXlibWindow,
+            .display = glfwGetX11Display(),
+            .window = glfwGetX11Window(window),
+        }  :
+        (void*)&(WGPUSurfaceSourceWaylandSurface) {
+            .chain.sType = WGPUSType_SurfaceSourceWaylandSurface,
+            .display = glfwGetWaylandDisplay(),
+            .surface = glfwGetWaylandWindow(window),
+        }),
     #else
         &(WGPUSurfaceSourceWindowsHWND) {
             .chain.sType = WGPUSType_SurfaceSourceWindowsHWND,
