@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 
 #define PRINTCCY_CUSTOM_TYPES s8: print_s8
@@ -168,6 +167,8 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_set(s, value)        do { slice_for_each(s, ptr) (*ptr) = (value); } while(false)
 #define slice_fill(s, s2)          do { for(u32 i = 0; i < slice_size((s)); i+=slice_size((s2))) buf_copy(s.start + i, s2.start, slice_size(s2)); } while(false)
 
+#define slice_array(arr)           slice_to((arr), array_len((arr)))
+
 #ifndef STRUCT
 #define STRUCT(name)         \
     typedef struct name name;\
@@ -184,6 +185,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 
 typedef SLICE(char) s8;
 typedef SLICE(u8) u8Slice;
+typedef SLICE(u16) u16Slice;
 #define str(s)                     ((s8)slice_to(s, str_len(s)))
 #define sstr(s)                    slice_to(s, array_len(s) - 1)
 #define slice_bytes(s)             slice_t(s, u8)

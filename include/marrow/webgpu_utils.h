@@ -105,6 +105,7 @@ static WGPUSurface get_surface(WGPUInstance instance
 #endif
 ) {
     i32 platform = glfwGetPlatform();
+    mrw_debug_val(platform);
     return wgpuInstanceCreateSurface(instance, &(WGPUSurfaceDescriptor) {
         .label = (WGPUStringView){ NULL, WGPU_STRLEN },
         .nextInChain = (WGPUChainedStruct*)
@@ -159,6 +160,17 @@ WGPUDynamicBuffer wgpuDeviceCreateDynamicBuffer(WGPUDevice device, u32 count, u3
     WGPUDynamicBuffer buffer = { .element_size = element_size, .usage = usage };
     wgpuDeviceDynamicBufferEnsure(device, &buffer, count);
     return buffer;
+}
+
+void wgpuDynamicBufferRelease(WGPUDynamicBuffer* buffer)
+{
+    wgpuBufferRelease(buffer->data);
+    *buffer = (WGPUDynamicBuffer) { 0 };
+}
+
+usize wgpuDynamicBufferGetCount(WGPUDynamicBuffer* buffer)
+{
+    return buffer->count;
 }
 
 WGPUShaderModule load_shader_module_from_file(WGPUDevice device, const char* path)
