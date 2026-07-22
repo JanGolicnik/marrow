@@ -5,8 +5,21 @@
 #include <stdio.h>
 #include <math.h>
 
-#define PRINTCCY_CUSTOM_TYPES s8: print_s8
+#define PRINTCCY_CUSTOM_TYPES str: print_str
 #include <printccy/printccy.h>
+
+#if defined(__STDC_VERSION__)
+    #define C_VERSION __STDC_VERSION__
+#else
+    #define C_VERSION 0L
+#endif
+
+#define C89  0L
+#define C95  199409L
+#define C99  199901L
+#define C11  201112L
+#define C17  201710L
+#define C23  202311L
 
 typedef uint8_t       u8;
 typedef uint16_t      u16;
@@ -23,9 +36,7 @@ typedef uintmax_t     usize;
 typedef float         f32;
 typedef double        f64;
 
-#ifndef __EMSCRIPTEN__
-typedef _Bool         bool;
-#endif
+typedef const char*   cstr;
 
 #define U8_MAX  UINT8_MAX
 #define U16_MAX UINT16_MAX
@@ -36,6 +47,12 @@ typedef _Bool         bool;
 #define I16_MAX INT16_MAX
 #define I32_MAX INT32_MAX
 #define I64_MAX INT64_MAX
+
+#if C_VERSION <= C17
+
+#ifndef __EMSCRIPTEN__
+typedef _Bool         bool;
+#endif
 
 #ifndef true
 #define true 1
@@ -48,6 +65,19 @@ typedef _Bool         bool;
 #ifndef nullptr
 #define nullptr ((void*)0)
 #endif // nullptr
+
+#ifndef alignof
+#define alignof _Alignof
+#endif // alignof
+
+#ifndef thread_local
+#define thread_local _Thread_local
+#endif // thread_local
+
+#endif // C_VERSION <= C17
+
+#define var auto
+#define let const auto
 
 #define BIT(n) (1ULL << (n))
 #define BIT_IS_SET(val,n)  (((val) >> (n)) & 1)
@@ -62,14 +92,6 @@ typedef _Bool         bool;
 #ifndef mrw_unused
 #define mrw_unused (void)
 #endif // mrw_unused
-
-#ifndef alignof
-#define alignof _Alignof
-#endif // alignof
-
-#ifndef thread_local
-#define thread_local _Thread_local
-#endif // thread_local
 
 #ifndef LINE_UNIQUE_VAR
 #define LINE_UNIQUE_VAR_CONCAT(a, b) a##b
@@ -118,7 +140,7 @@ static inline u8 i32_n_digits(i32 v)
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define array_size(arr) (sizeof((arr)))
 #define array_slice(arr) slice_to((arr), array_len((arr)))
-#define array_for_each(arr, ptr) for(typeof(*(arr))* ptr = (arr); (ptr) < ((arr) + array_len((arr))); (ptr)++)
+#define array_for_each(arr, ptr, T) for(T* ptr = (arr); (ptr) < ((arr) + array_len((arr))); (ptr)++)
 #define array_for_each_i(arr, i) for(usize i = 0; (i) < array_len((arr)); (i)++)
 #endif // array_len
 
@@ -126,6 +148,7 @@ static inline void buf_copy(void* dst, const void* source, usize len)
 {
     while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
 }
+
 static inline i32 buf_cmp(const void* a, const void* b, usize len)
 {
     for (usize i = 0; i < len; i++) {
@@ -157,7 +180,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_count(s)             ((usize)(slice_end((s)) > slice_start((s)) ? (slice_end((s)) - slice_start((s))) : 0))
 #define slice_size(s)              (slice_count(s) * sizeof(*slice_start((s))))
 
-#define slice_for_each(s, ptr)     for(typeof(slice_start((s))) ptr = slice_start((s)); ptr != slice_end((s)); ptr++)
+#define slice_for_each(s, ptr, T)     for(T* ptr = slice_start((s)); ptr != slice_end((s)); ptr++)
 #define slice_for_each_i(s, i)     for(usize i = 0; (slice_start((s)) + (i)) != slice_end((s)); i++)
 
 #define slice_copy_ptr(s, from)    buf_copy((void*)slice_start((s)), (void*)(from), slice_size((s)))
@@ -167,7 +190,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_set(s, value)        do { slice_for_each(s, ptr) (*ptr) = (value); } while(false)
 #define slice_fill(s, s2)          do { for(u32 i = 0; i < slice_size((s)); i+=slice_size((s2))) buf_copy(s.start + i, s2.start, slice_size(s2)); } while(false)
 
-#define slice_array(arr)           slice_to((arr), array_len((arr)))
+#define slice_from_array(arr)      slice_to((arr), array_len((arr)))
 
 #ifndef STRUCT
 #define STRUCT(name)         \
@@ -183,29 +206,42 @@ static inline void buf_set(void* dst, u8 value, usize len)
     union name
 #endif // UNION
 
-typedef SLICE(char) s8;
-typedef SLICE(u8) u8Slice;
-typedef SLICE(u16) u16Slice;
-#define str(s)                     ((s8)slice_to(s, str_len(s)))
-#define sstr(s)                    slice_to(s, array_len(s) - 1)
-#define slice_bytes(s)             slice_t(s, u8)
-
-static inline u32 str_len(const char* str)
+static inline u32 c_str_len(cstr c_str)
 {
-    const char* iter = str;
+    cstr iter = c_str;
     while (*iter) iter++;
-    return iter - str;
+    return iter - c_str;
 }
 
-static inline usize s8_len(s8 s) { return slice_size(s); }
+static inline i32 c_str_cmp(cstr a, cstr b)
+{
+    u8 *ap = (u8*)a, *bp = (u8*)b;
+    for (u32 i = 0; *(ap++) && *(bp++); i++)
+        if (((u8*)a)[i] != ((u8*)b)[i])
+            return (i32)((u8*)a)[i] - (i32)((u8*)b)[i];
+    return 0;
+}
 
-static inline char* s8_skip_while(s8 s, char c)
+typedef SLICE(char) str;
+typedef SLICE(u8)   u8Slice;
+typedef SLICE(u16)  u16Slice;
+
+#define str(s)      ((str)slice_to(s, c_str_len(s)))
+#define sstr(s)     slice_to(s, array_len(s) - 1)
+#define bytes(s)    slice_t(s, u8)
+#define slice_u8(s) bytes(s)
+
+static inline usize str_len(str s) {
+    return slice_size(s);
+}
+
+static inline char* str_skip_while(str s, char c)
 {
     while(s.start != s.end && *s.start == c) s.start++;
     return s.start;
 }
 
-static inline char* s8_skip_until(s8 s, char c)
+static inline char* str_skip_until(str s, char c)
 {
     while(s.start != s.end && *(s.start++) != c);
     return s.start;
@@ -223,24 +259,24 @@ static inline bool char_in_filter(char c, CharFilter filter)
     return false;
 }
 
-static inline char* s8_skip_filter(s8 s, CharFilter filter)
+static inline char* str_skip_filter(str s, CharFilter filter)
 {
     while(s.start != s.end && char_in_filter(*s.start, filter)) s.start++;
     return s.start;
 }
 
-static inline char* s8_find_r(s8 s, char c)
+static inline char* str_find_r(str s, char c)
 {
     if (s.start == s.end) return nullptr;
     do { if(*(--s.end) == c) return s.end; } while (s.end != s.start);
     return nullptr;
 }
 
-static inline i32 s8_parse_i32(s8 s)
+static inline i32 str_parse_i32(str s)
 {
     i32 val = 0;
     bool negate = *s.start == '-';
-    slice_for_each(s, c)
+    slice_for_each(s, c, char)
     {
         if (*c < 48 || *c > 57) continue;
         val = val * 10 + *c - 48;
@@ -248,24 +284,16 @@ static inline i32 s8_parse_i32(s8 s)
     return negate ? -val : val;
 }
 
-static inline f32 s8_parse_float(s8 s)
+static inline f32 str_parse_float(str s)
 {
     bool negate = *s.start == '-';
-    s8 whole = s, fraction = s;
-    fraction.start = whole.end = s8_skip_until(whole, '.');
-    i32 wholei = s8_parse_i32(fraction);
-    return (f32)s8_parse_i32(whole) + (f32)wholei / (f32)pow(10, i32_n_digits(wholei)) * (negate ? -1.0 : 1.0f);
+    str whole = s, fraction = s;
+    fraction.start = whole.end = str_skip_until(whole, '.');
+    i32 wholei = str_parse_i32(fraction);
+    return (f32)str_parse_i32(whole) + (f32)wholei / (f32)pow(10, i32_n_digits(wholei)) * (negate ? -1.0 : 1.0f);
 }
 
-static inline i32 str_cmp(const void* a, const void* b)
-{
-    u8 *ap = (u8*)a, *bp = (u8*)b;
-    for (u32 i = 0; *(ap++) && *(bp++); i++)
-        if (((u8*)a)[i] != ((u8*)b)[i])
-            return (i32)((u8*)a)[i] - (i32)((u8*)b)[i];
-    return 0;
-}
-static inline i32 s8_cmp(s8 a, s8 b)
+static inline i32 str_cmp(str a, str b)
 {
     u32 a_count = slice_count(a);
     u32 b_count = slice_count(b);
@@ -276,13 +304,13 @@ static inline i32 s8_cmp(s8 a, s8 b)
 static inline u64 hash_bytes(u8Slice s)
 {
     u64 hash = 0xcbf29ce484222325ULL;
-    slice_for_each(s, v) {
+    slice_for_each(s, v, u8) {
         hash ^= (u8)(*v);
         hash *= 0x100000001b3ULL;
     }
     return hash;
 }
-#define hash_slice(s) hash_bytes(slice_bytes((s)))
+#define hash_slice(s) hash_bytes(slice_u8((s)))
 
 static inline u64 hash_u64(u64 val)
 {
@@ -310,12 +338,12 @@ static inline u64 hash_combine(u64 a, u64 b)
 #define INV_SQRT_3 0.5773502691896258f  // 1/sqrt(3)
 
 // insertion sort
-#define sort_indices(out, array, n, cmp) do {\
+#define sort_indices(out, array, n, cmp, T) do {\
     for (u32 i = 0; i < n; i++) {\
-        typeof(*array)* a = &array[i];\
+        T* a = &array[i];\
         u32 index = 0;\
         while(index < i) {\
-            typeof(*array)* b = &array[out[index]];\
+            T* b = &array[out[index]];\
             if (cmp) break;\
             index++;\
         }\
@@ -335,8 +363,8 @@ static inline u64 hash_combine(u64 a, u64 b)
             u32 high = (low + 2 * width < (n)) ? low + 2 * width : (n);\
             u32 i = low, j = mid, k = low;\
             while (i < mid && j < high) {\
-                typeof(*array)* a = &array[out[i]];\
-                typeof(*array)* b = &array[out[j]];\
+                T* a = &array[out[i]];\
+                T* b = &array[out[j]];\
                 aux[k++] = (!(cmp)) ? out[i++] : out[j++];\
             }\
             while (i < mid) {\
@@ -441,7 +469,7 @@ static inline HSV rgb_to_hsv(u32 color) {
     #define mrw_text_color2 "\x1b[0m"
 #endif
 
-thread_local s8 _format_buf;
+thread_local str _format_buf;
 thread_local u32 _format_buf_len;
 #define mrw_format(f, allocator, ...)\
 (\
@@ -476,8 +504,8 @@ thread_local u32 _format_buf_len;
 #define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
 #endif // mrw_abort
 
-int print_s8(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
-    s8 s = va_arg(*list, s8);
+int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
+    str s = va_arg(*list, str);
     size_t n = min(slice_size(s), output_len);
     i32 i = n;
     while(i-- > 0) *(output++) = *(s.end - i - 1);

@@ -162,6 +162,16 @@ WGPUDynamicBuffer wgpuDeviceCreateDynamicBuffer(WGPUDevice device, u32 count, u3
     return buffer;
 }
 
+WGPUBuffer wgpuDeviceCreateBufferWithData(WGPUDevice device, WGPUQueue queue, u8Slice data, WGPUBufferUsage usage) {
+    WGPUBuffer ret = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
+            .size = slice_size(data),
+            .usage = usage
+        }
+    );
+    wgpuQueueWriteBuffer(queue, ret, 0, data.start, slice_size(data));
+    return ret;
+}
+
 void wgpuDynamicBufferRelease(WGPUDynamicBuffer* buffer)
 {
     wgpuBufferRelease(buffer->data);
