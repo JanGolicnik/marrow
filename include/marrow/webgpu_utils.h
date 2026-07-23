@@ -65,14 +65,14 @@ static void device_uncaptured_error_callback(WGPUDevice const* device, WGPUError
 {
     if (message.length == WGPU_STRLEN)
     {
-        mrw_error("Uncaptured device error ({}): {}", (u32)type, message.data);
+        mrw_abort("Uncaptured device error ({}): {}", (u32)type, message.data);
     }
     else
     {
         char data[message.length + 1];
         buf_copy(data, message.data, message.length + 1);
         data[message.length] = 0;
-        mrw_error("Uncaptured device error ({}): {}", (u32)type, data);
+        mrw_abort("Uncaptured device error ({}): {}", (u32)type, data);
     }
 }
 
@@ -96,6 +96,7 @@ static WGPUDevice get_device(WGPUAdapter adapter)
     #ifdef __EMSCRIPTEN__
         while(!request_device_user_data.request_done) emscripten_sleep(100);
     #endif
+
     return request_device_user_data.device;
 }
 
@@ -153,6 +154,12 @@ void wgpuDeviceDynamicBufferEnsure(WGPUDevice device, WGPUDynamicBuffer* buffer,
         .size = buffer->count * buffer->element_size,
         .usage = buffer->usage
     });
+}
+
+void wgpuDeviceQueueWriteDynamicBuffer(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data, u32 offset)
+{
+    wgpuDeviceDynamicBufferEnsure(device, buffer, offset + slice_size(data) / buffer->element_size);
+    wgpuQueueWriteBuffer(queue, buffer->data, offset * buffer->element_size, data.start, buffer->element_size);
 }
 
 WGPUDynamicBuffer wgpuDeviceCreateDynamicBuffer(WGPUDevice device, u32 count, u32 element_size, WGPUBufferUsage usage)

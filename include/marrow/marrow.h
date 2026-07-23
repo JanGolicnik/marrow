@@ -171,6 +171,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_dead(ptr)            slice((ptr), (ptr))
 #define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
 #define slice_to(ptr, count)       slice_range((ptr), 0, (count))
+#define slice_one(val)             slice_dead((val))
 
 #define slice_back(s, count)       slice(slice_start((s)), slice_end((s)) - count)
 #define slice_advance(s, count)    slice_range((s).start, count, slice_count((s)))
@@ -230,6 +231,7 @@ typedef SLICE(u16)  u16Slice;
 #define sstr(s)     slice_to(s, array_len(s) - 1)
 #define bytes(s)    slice_t(s, u8)
 #define slice_u8(s) bytes(s)
+#define slice_u8_one(s) (u8Slice)slice_to((u8*)(s), sizeof(*s))
 
 static inline usize str_len(str s) {
     return slice_size(s);
@@ -510,6 +512,22 @@ int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t 
     i32 i = n;
     while(i-- > 0) *(output++) = *(s.end - i - 1);
     return n;
+}
+
+thread_local u32 mrw_seed = 12312;
+u32 pcg_hash(void) {
+    mrw_seed = mrw_seed * 747796405u + 2891336453u;
+    u32 state = mrw_seed;
+    u32 word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+f32 mrw_random(void) {
+    return (f32)pcg_hash() / (f32)U32_MAX;
+}
+
+f32 mrw_random_f32(f32 min, f32 max) {
+    return mrw_random() * (max - min) + min;
 }
 
 #endif // MARROW_H
