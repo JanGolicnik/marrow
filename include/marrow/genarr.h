@@ -51,7 +51,7 @@ void _genarr_add(u8** items, u64* n_items, u64 item_size, u64 next_free_offset)
 )
 
 #define genarr_is(a, index) (((index).i < (a).size) && ((a).items[(index).i].gen == index.gen) && ((a).items[(index).i].gen & 1))
-#define genarr_get(a, index) (genarr_is((a), (index)) ? &((a).items[(index).i]).val : (mrw_abort("out of bounds"), &((a).items[0]).val))
+#define genarr_get(a, index) (genarr_is((a), (index)) ? &((a).items[(index).i]).val : (mrw_abort("xd"), &((a).items[0]).val))
 
 #define genarr_remove(a, index) \
 do { \
