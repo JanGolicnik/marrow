@@ -503,7 +503,7 @@ thread_local u32 _format_buf_len;
 #endif // mrw_error
 
 #ifndef mrw_abort
-#define mrw_abort(f, ...) do { printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
+#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), exit(1), 0)
 #endif // mrw_abort
 
 int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
@@ -528,6 +528,19 @@ f32 mrw_random(void) {
 
 f32 mrw_random_f32(f32 min, f32 max) {
     return mrw_random() * (max - min) + min;
+}
+
+// modified from https://jameshfisher.com/2018/03/30/round-up-power-2/
+u32 u32_nextpow2(u32 x) {
+  if (x == 0) return 2;
+  x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16;
+  return x + 1;
+}
+
+u64 u64_nextpow2(u64 x) {
+  if (x==0)return 2;
+  x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16; x |= x>>32;
+  return x + 1;
 }
 
 #endif // MARROW_H
