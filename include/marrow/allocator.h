@@ -42,24 +42,25 @@ static inline void* allocator_realloc(Allocator* allocator, void* ptr, usize old
     return allocator->realloc(allocator, ptr, old_size, new_size, align);
 }
 
-#define allocator_alloc_t(alloc, T) \
-    ((T*) allocator_alloc((alloc), sizeof(T), alignof(T)))
-
-#define allocator_array_t(alloc, T, count) \
-    ((T*) allocator_alloc((alloc), sizeof(T) * (count), alignof(T)))
-
-#define allocator_realloc_t(alloc, ptr, old_count, new_count, T) \
-    ((T*) allocator_realloc((alloc), (ptr), \
-        sizeof(T) * (old_count), sizeof(T) * (new_count), alignof(T)))
-
-#define allocator_make_copy_t(alloc, src, count, T) \
-    ((T*) allocator_make_copy((alloc), (src), sizeof(T) * (count), alignof(T)))
-
 static inline void allocator_free(Allocator* allocator, void* ptr, usize size)
 {
     allocator = allocator ? allocator : &_default_allocator;
     allocator->free(allocator, ptr, size);
 }
+
+#define mrw_alloc(alloc, T) \
+    ((T*) allocator_alloc((alloc), sizeof(T), alignof(T)))
+
+#define mrw_alloc_n(alloc, T, n) \
+((T*) allocator_alloc((alloc), sizeof(T) * (n), alignof(T)))
+
+#define mrw_realloc(alloc, ptr, old_count, new_count, T) \
+    ((T*) allocator_realloc((alloc), (ptr), sizeof(T) * (old_count), sizeof(T) * (new_count), alignof(T)))
+
+#define mrw_make_copy(alloc, src, count, T) \
+    ((T*) allocator_make_copy((alloc), (src), sizeof(*(src)) * (count), alignof(*(src))))
+
+#define mrw_free(alloc, src) allocator_free((alloc), (src), sizeof(*(src)))
 
 static inline void* align_up(void* x, size_t a) {
     return (void*)(((usize)x + (a-1)) & ~(uintptr_t)(a-1));

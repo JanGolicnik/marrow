@@ -4,7 +4,7 @@
 #include "marrow.h"
 #include "vektor.h"
 
-typedef struct { u32 i; u32 gen; } GenarrIndex;
+typedef struct { union { u32 i; u32 valid; }; u32 gen; } GenarrHandle;
 
 // 0th element is sentinel
 // gen & 1 -> alive
@@ -27,7 +27,7 @@ do { \
     vektor_clear((a));\
 } while (0)
 
-static thread_local GenarrIndex _genarr_tmp_index;
+static thread_local GenarrHandle _genarr_tmp_handle;
 void _genarr_add(u8** items, u64* n_items, u64 item_size, u64 next_free_offset)
 {
     u32 first_free = next_free(0);
@@ -40,18 +40,18 @@ void _genarr_add(u8** items, u64* n_items, u64 item_size, u64 next_free_offset)
         (*n_items)++;
     }
     gen(i) += 1;
-    _genarr_tmp_index = (GenarrIndex){ .i = i, .gen = gen(i) };
+    _genarr_tmp_handle = (GenarrHandle){ .i = i, .gen = gen(i) };
 }
 
 #define genarr_add(a, ...) (\
     vektor_ensure((a), (a).n_items + 2)/*extra space for the sentinel*/,\
     _genarr_add((u8**)&(a).items, &(a).n_items, sizeof(*(a).items), sizeof((a).items[0].gen)),\
-    (a).items[_genarr_tmp_index.i].val = (__VA_ARGS__),\
-    _genarr_tmp_index\
+    (a).items[_genarr_tmp_handle.i].val = (__VA_ARGS__),\
+    _genarr_tmp_handle\
 )
 
-#define genarr_is(a, index) (((index).i < (a).size) && ((a).items[(index).i].gen == index.gen) && ((a).items[(index).i].gen & 1))
-#define genarr_get(a, index) (genarr_is((a), (index)) ? &((a).items[(index).i]).val : (mrw_abort("xd"), &((a).items[0]).val))
+#define genarr_is(a, handle) (((handle).i < (a).size) && ((a).items[(handle).i].gen == (handle).gen) && ((a).items[(handle).i].gen & 1))
+#define genarr_get(a, handle) (genarr_is((a), (handle)) ? &((a).items[(handle).i]).val : (mrw_abort("xd"), &((a).items[0]).val))
 
 void* _genarr_next_valid(u8** items, u64 n_items, u64 item_size, u64* curr)
 {
@@ -63,12 +63,12 @@ void* _genarr_next_valid(u8** items, u64 n_items, u64 item_size, u64* curr)
 }
 #define genarr_next_valid(a, curr) _genarr_next_valid((u8**)&(a).items, (a).n_items, sizeof(*(a).items), curr)
 
-#define genarr_remove(a, index) \
+#define genarr_remove(a, handle) \
 do { \
-    if (!genarr_is((a), (index))) break;\
-    (a).items[(index).i].gen++;\
-    (a).items[(index).i].next_free = (a).items[0].next_free;\
-    (a).items[0].next_free = (index).i;\
+    if (!genarr_is((a), (handle))) break;\
+    (a).items[(handle).i].gen++;\
+    (a).items[(handle).i].next_free = (a).items[0].next_free;\
+    (a).items[0].next_free = (handle).i;\
 } while (0)
 
 #undef next_free
