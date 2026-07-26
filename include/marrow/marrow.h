@@ -80,10 +80,17 @@ typedef _Bool         bool;
 #define let const auto
 
 #define BIT(n) (1ULL << (n))
-#define BIT_IS_SET(val,n)  (((val) >> (n)) & 1)
+#define BIT_HAS(val,n)    (((val) >> (n)) & 1)
 #define BIT_SET(val, n)   ((val) |= BIT(n))
 #define BIT_CLEAR(val, n) ((val) &= ~BIT(n))
 #define BIT_TOGGLE(val,n) ((val) ^= BIT(n))
+
+#define FLAG_HAS(val,v)     (((val) & (v)) != 0)
+#define FLAG_HAS_ANY(val,v) FLAG_HAS((val), (v))
+#define FLAG_HAS_ALL(val,v) (((val) & (v)) == (v))
+#define FLAG_SET(val, v)    ((val) |= (v))
+#define FLAG_CLEAR(val, v)  ((val) &= ~(v))
+#define FLAG_TOGGLE(val, v) ((val) ^= (v))
 
 #ifndef loop
 #define loop while(true)

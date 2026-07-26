@@ -8,10 +8,12 @@ typedef struct { union { u32 i; u32 valid; }; u32 gen; } GenarrHandle;
 
 // 0th element is sentinel
 // gen & 1 -> alive
-// n_items(from vektor) is the index of the last non free element
+// n_items(from vektor) doesnt count freed stuff
 #define GENARR(T) VEKTOR(struct { u32 gen; u32 next_free; T val; })
 
-// undefed
+#define GENARR_ITER(T) struct { T* _val; GenarrHandle handle; }
+#define GENARR_ITER_ALIAS(T, alias) struct { union { T* alias; T* _val; }; GenarrHandle handle; }
+
 #define next_free(i) *(u32*)((*items) + (i) * item_size + next_free_offset)
 #define gen(i) *(u32*)((*items) + (i) * item_size)
 
@@ -51,17 +53,23 @@ void _genarr_add(u8** items, u64* n_items, u64 item_size, u64 next_free_offset)
 )
 
 #define genarr_is(a, handle) (((handle).i < (a).size) && ((a).items[(handle).i].gen == (handle).gen) && ((a).items[(handle).i].gen & 1))
-#define genarr_get(a, handle) (genarr_is((a), (handle)) ? &((a).items[(handle).i]).val : (mrw_abort("xd"), &((a).items[0]).val))
+#define genarr_get(a, handle) (genarr_is((a), (handle)) ? &((a).items[(handle).i]).val : nullptr)
 
-void* _genarr_next_valid(u8** items, u64 n_items, u64 item_size, u64* curr)
+bool _genarr_next_valid(u8** items, u64 n_items, u64 item_size, GenarrHandle* handle)
 {
-    while (*curr <= n_items && (gen(*curr) & 1) == 0) (*curr)++;
-    if (*curr > n_items) return nullptr;
-    void* e = &gen(*curr);
-    (*curr)++;
-    return e;
+    do { handle->i += 1; }
+    while (handle->i <= n_items && !(gen(handle->i) & 1));
+    if (handle->i <= n_items) {
+        handle->gen = gen(handle->i);
+        return true;
+    }
+    return false;
 }
-#define genarr_next_valid(a, curr) _genarr_next_valid((u8**)&(a).items, (a).n_items, sizeof(*(a).items), curr)
+
+#define genarr_next_valid(a, iter) (\
+    _genarr_next_valid((u8**)&(a).items, (a).n_items, sizeof(*(a).items), &(iter)->handle) ?\
+        ((iter)->_val = &(a).items[(iter)->handle.i].val, true)\
+        : false)
 
 #define genarr_remove(a, handle) \
 do { \
