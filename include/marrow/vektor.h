@@ -32,9 +32,9 @@ do { \
 
 #define vektor_add(v, ...) vektor_insert(v, v.n_items, __VA_ARGS__)
 
-static inline void _vektor_ensure(u8 **items, u64 *size, u64 new_size, u64 n_items, u64 item_size, Allocator *a) {
-    if (n_items < *size) return;
-    new_size = u64_nextpow2(max(new_size, n_items));
+static inline void _vektor_ensure(u8 **items, u64 *size, u64 new_size, u64 item_size, Allocator *a) {
+    if (new_size < *size) return;
+    new_size = u64_nextpow2(new_size);
     *items = (u8*)(*items
         ? allocator_realloc(a, *items, *size * item_size, new_size * item_size, 1)
         : allocator_alloc(a, new_size * item_size, 1));
@@ -43,7 +43,15 @@ static inline void _vektor_ensure(u8 **items, u64 *size, u64 new_size, u64 n_ite
 }
 
 #define vektor_ensure(a, new_size) \
-    _vektor_ensure((u8 **)&(a).items, &(a).size, (new_size), (a).n_items + 1, sizeof(*(a).items), (a)._allocator)
+    _vektor_ensure((u8 **)&(a).items, &(a).size, (new_size), sizeof(*(a).items), (a)._allocator)
+
+#define vektor_add_arr(v, slice) \
+do { \
+    vektor_ensure((v), (v).n_items + slice_count((slice)));\
+    for (u64 i = 0; i < slice_count((slice)); i++) \
+        (v).items[(v).n_items + i] = (slice).start[i]; \
+    v.n_items += slice_count((slice));\
+} while (0)
 
 #define vektor_insert(v, position, ...) \
 do { \
@@ -60,6 +68,8 @@ do { \
     for (u64 i = position; i < v.n_items - 1; i++) \
         v.items[i] = v.items[i + 1]; \
     v.n_items--; \
-} while (0)
+}while (0)
+
+#define slice_vektor(v) slice_to((v).items, (v).n_items)
 
 #endif // MARROW_VEKTOR_H

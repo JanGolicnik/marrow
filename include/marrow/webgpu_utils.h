@@ -156,10 +156,17 @@ void wgpuDeviceDynamicBufferEnsure(WGPUDevice device, WGPUDynamicBuffer* buffer,
     });
 }
 
+// TODO: make this type checkde
 void wgpuDeviceQueueWriteDynamicBuffer(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data, u32 offset)
 {
     wgpuDeviceDynamicBufferEnsure(device, buffer, offset + slice_size(data) / buffer->element_size);
     wgpuQueueWriteBuffer(queue, buffer->data, offset * buffer->element_size, data.start, buffer->element_size);
+}
+
+void wgpuDeviceQueueWriteDynamicBufferRaw(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data)
+{
+    wgpuDeviceDynamicBufferEnsure(device, buffer, slice_size(data) / buffer->element_size);
+    wgpuQueueWriteBuffer(queue, buffer->data, 0, data.start, slice_size(data));
 }
 
 WGPUDynamicBuffer wgpuDeviceCreateDynamicBuffer(WGPUDevice device, u32 count, u32 element_size, WGPUBufferUsage usage)
