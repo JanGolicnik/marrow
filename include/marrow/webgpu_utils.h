@@ -1,4 +1,5 @@
 #include <webgpu/webgpu.h>
+#include <marrow/allocator.h>
 #include <marrow/marrow.h>
 
 #ifndef __EMSCRIPTEN__
@@ -14,6 +15,7 @@
 
 #define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
 #define WEBGPU_STR(str) (WGPUStringView) { .data = str, .length = WGPU_STRLEN }
+#define WEBGPU_STR_SLICE(slice) (WGPUStringView) { .data = slice.start, .length = slice_size(slice) }
 
 STRUCT(RequestAdapterUserData) {
     WGPUAdapter adapter;
@@ -145,28 +147,35 @@ typedef struct WGPUDynamicBuffer
     u32 element_size;
 } WGPUDynamicBuffer;
 
-void wgpuDeviceDynamicBufferEnsure(WGPUDevice device, WGPUDynamicBuffer* buffer, u32 count)
+// retuns if resized
+bool wgpuDeviceDynamicBufferEnsure(WGPUDevice device, WGPUDynamicBuffer* buffer, u32 count)
 {
-    if (buffer->count >= count) return;
+    bool resized = buffer->count < count;
+    if (resized) {
+        if (buffer->data) wgpuBufferRelease(buffer->data);
+        buffer->data =  wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
+            .size = count * buffer->element_size,
+            .usage = buffer->usage
+        });
+    }
     buffer->count = count;
-    if (buffer->data) wgpuBufferRelease(buffer->data);
-    buffer->data =  wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
-        .size = buffer->count * buffer->element_size,
-        .usage = buffer->usage
-    });
+    return resized;
 }
 
 // TODO: make this type checkde
-void wgpuDeviceQueueWriteDynamicBuffer(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data, u32 offset)
+// returns if resized
+bool wgpuDeviceQueueWriteDynamicBuffer(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data, u32 offset)
 {
-    wgpuDeviceDynamicBufferEnsure(device, buffer, offset + slice_size(data) / buffer->element_size);
+    bool resized = wgpuDeviceDynamicBufferEnsure(device, buffer, offset + slice_size(data) / buffer->element_size);
     wgpuQueueWriteBuffer(queue, buffer->data, offset * buffer->element_size, data.start, buffer->element_size);
+    return resized;
 }
 
-void wgpuDeviceQueueWriteDynamicBufferRaw(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data)
+bool wgpuDeviceQueueWriteDynamicBufferRaw(WGPUDevice device, WGPUQueue queue, WGPUDynamicBuffer* buffer, u8Slice data)
 {
-    wgpuDeviceDynamicBufferEnsure(device, buffer, slice_size(data) / buffer->element_size);
+    bool resized = wgpuDeviceDynamicBufferEnsure(device, buffer, slice_size(data) / buffer->element_size);
     wgpuQueueWriteBuffer(queue, buffer->data, 0, data.start, slice_size(data));
+    return resized;
 }
 
 WGPUDynamicBuffer wgpuDeviceCreateDynamicBuffer(WGPUDevice device, u32 count, u32 element_size, WGPUBufferUsage usage)
@@ -197,17 +206,40 @@ usize wgpuDynamicBufferGetCount(WGPUDynamicBuffer* buffer)
     return buffer->count;
 }
 
-WGPUShaderModule load_shader_module_from_file(WGPUDevice device, const char* path)
+usize wgpuDynamicBufferGetSize(WGPUDynamicBuffer* buffer)
 {
-    FILE *fp = fopen(path, "rb"); fseek(fp, 0, SEEK_END);
-    u64 len = ftell(fp); fseek(fp, 0, SEEK_SET);
-    char shader_code[len + 1]; fread(shader_code, 1, len, fp);
-    shader_code[len] = 0; fclose(fp);
+    return buffer->count * buffer->element_size;
+}
+
+WGPUShaderModule load_shader_module_from_file(WGPUDevice device, cstr path, strSlice includes, Allocator* allocator)
+{
+    FILE *fp = fopen(path, "rb");
+    fseek(fp, 0, SEEK_END);
+    u64 len = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    char buf[len];
+    fread(buf, 1, len, fp);
+    fclose(fp);
+
+    str full_shader = slice_from_array(buf);
+    for (u32 i = slice_count(includes) - 1; i < slice_count(includes); i--)
+    {
+        FILE *fp = fopen(includes.start[i].start, "rb");
+        fseek(fp, 0, SEEK_END);
+        u64 len = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        char buf[len];
+        fread(buf, 1, len, fp);
+        fclose(fp);
+        str include_shader = slice_from_array(buf);
+        full_shader = mrw_format("{}\n{}", allocator, include_shader, full_shader);
+    }
+
     return wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor) {
         .label = WEBGPU_STR("planet shader descriptor"),
         .nextInChain = (WGPUChainedStruct*)&(WGPUShaderSourceWGSL) {
             .chain.sType = WGPUSType_ShaderSourceWGSL,
-            .code = WEBGPU_STR(shader_code)
+            .code = WEBGPU_STR_SLICE(full_shader)
         }
     });
 }

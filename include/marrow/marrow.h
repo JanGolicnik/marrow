@@ -233,12 +233,15 @@ static inline i32 c_str_cmp(cstr a, cstr b)
 typedef SLICE(char) str;
 typedef SLICE(u8)   u8Slice;
 typedef SLICE(u16)  u16Slice;
+typedef SLICE(str)  strSlice;
+typedef SLICE(cstr) cstrSlice;
 
 #define str(s)      ((str)slice_to(s, c_str_len(s)))
 #define sstr(s)     slice_to(s, array_len(s) - 1)
 #define bytes(s)    slice_t(s, u8)
 #define slice_u8(s) bytes(s)
 #define slice_u8_one(s) (u8Slice)slice_to((u8*)(s), sizeof(*s))
+#define slice_u8_arr(s) (u8Slice)slice_to((u8*)(s), sizeof(s))
 
 static inline usize str_len(str s) {
     return slice_size(s);
@@ -515,6 +518,7 @@ thread_local u32 _format_buf_len;
 
 int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
     str s = va_arg(*list, str);
+    if (!output_len) return slice_size(s);
     size_t n = min(slice_size(s), output_len);
     i32 i = n;
     while(i-- > 0) *(output++) = *(s.end - i - 1);
