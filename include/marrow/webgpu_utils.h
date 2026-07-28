@@ -71,10 +71,8 @@ static void device_uncaptured_error_callback(WGPUDevice const* device, WGPUError
     }
     else
     {
-        char data[message.length + 1];
-        buf_copy(data, message.data, message.length + 1);
-        data[message.length] = 0;
-        mrw_abort("Uncaptured device error ({}): {}", (u32)type, data);
+        str s = { .start = (char*)message.data, .end = (char*)message.data + message.length };
+        mrw_abort("Uncaptured device error ({}): {}", (u32)type, s);
     }
 }
 
@@ -257,6 +255,12 @@ WGPUShaderModule load_shader_module_from_file(WGPUDevice device, cstr path, strS
     .operation = WGPUBlendOperation_Add\
 }
 
+#define wgpu_color_blend_state_add (WGPUBlendComponent){\
+    .srcFactor = WGPUBlendFactor_One,\
+    .dstFactor = WGPUBlendFactor_One,\
+    .operation = WGPUBlendOperation_Add\
+}
+
 #define wgpu_alpha_blend_state (WGPUBlendComponent){\
     .srcFactor = WGPUBlendFactor_Zero,\
     .dstFactor = WGPUBlendFactor_One,\
@@ -265,5 +269,10 @@ WGPUShaderModule load_shader_module_from_file(WGPUDevice device, cstr path, strS
 
 #define wgpu_normal_blend_state (WGPUBlendState){\
     .color = wgpu_color_blend_state,\
+    .alpha = wgpu_alpha_blend_state\
+}
+
+#define wgpu_normal_blend_state_add (WGPUBlendState){\
+    .color = wgpu_color_blend_state_add,\
     .alpha = wgpu_alpha_blend_state\
 }
