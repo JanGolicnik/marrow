@@ -1,6 +1,14 @@
 # Marrow
 
-A collection of headers I like
+A collection of headers that i use for making stuff in c
+
+Right now theres:
+- useful typedefs, slices, and general utility function (marrow.h)
+- an allocator api (allocator.h)
+- type safe dynamic vector (vektor.h)
+- type safe hash map (mapa.h)
+- type safe generational array (genarr.h)
+- rendering abstraction over webgpu (reni.h)
 
 ## Including in your own project
 
