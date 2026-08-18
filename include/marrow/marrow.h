@@ -513,7 +513,7 @@ thread_local u32 _format_buf_len;
 #endif // mrw_error
 
 #ifndef mrw_abort
-#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), exit(1), 0)
+#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
 #endif // mrw_abort
 
 int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
