@@ -2,12 +2,14 @@
 
 A collection of headers that i use for making stuff in c
 
+All the container types are type safe and should be reasonably fast, the macro definitions and allocator api usage needs some polish tho.
+
 Right now theres:
 - useful typedefs, slices, and general utility functions (marrow.h)
 - an allocator api (allocator.h)
-- type safe dynamic vector (vektor.h)
-- type safe hash map (mapa.h)
-- type safe generational array (genarr.h)
+- dynamic array (vektor.h)
+- hash map (mapa.h)
+- generational array (genarr.h)
 - rendering abstraction over webgpu (reni.h)
 
 ## Including in your own project
