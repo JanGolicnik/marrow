@@ -10,6 +10,7 @@ Right now theres:
 - dynamic array (vektor.h)
 - hash map (mapa.h)
 - generational array (genarr.h)
+- 0 allocation json parser (json.h)
 - rendering abstraction over webgpu (reni.h)
 
 ## Including in your own project

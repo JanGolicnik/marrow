@@ -2,7 +2,7 @@
 #define MARROW_MAPA_H
 
 #include "marrow.h"
-#include "marrow/allocator.h"
+#include "marrow/alloc.h"
 
 #ifndef MAPA_INITIAL_CAPACITY
 #define MAPA_INITIAL_CAPACITY 1
@@ -12,8 +12,8 @@
 #define MAPA_INITIAL_SEED 0x9747b28c
 #endif // MAPA_INITIAl_SEED
 
-typedef u64 (*mapa_hash_func)(void const*, u64);
-typedef u8 (*mapa_cmp_func)(void const*, void const*, u64);
+typedef u64 (*mapa_hash_func)(const void*, u64);
+typedef u8 (*mapa_cmp_func)(const void*, const void*, u64);
 
 #define MAPA(key_type, value_type) \
 struct \
@@ -46,14 +46,14 @@ struct \
 #define mapa_init(m, hash_func, cmp_func, allocator) \
 do { \
     m._hash_func = hash_func; m._cmp_func = cmp_func; m._allocator = allocator; m.size = MAPA_INITIAL_CAPACITY; m.n_entries = 0;\
-    m.entries = allocator_alloc(m._allocator, sizeof(m.entries[0]) * m.size, 1); \
+    m.entries = _mrw_alloc(m._allocator, sizeof(m.entries[0]) * m.size, 1); \
     buf_set(m.entries, 0, m.size * sizeof(*m.entries)); \
 } while(0)
 
 #define mapa_free(m) \
 do { \
     /* TODO: if owning free keys as well */ \
-    allocator_free(m._allocator, m.entries, m.size * sizeof(*m.entries)); \
+    _mrw_free(m._allocator, m.entries, m.size * sizeof(*m.entries)); \
     m.n_entries = 0; m.size = 0; m.entries = nullptr;\
 } while(0)
 
@@ -91,7 +91,7 @@ thread_local u64 _mapa_i = -1;
 static inline void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u32 entry_size)
 {
     u32 alloc_size = new_size * entry_size;
-    u8* new_entries = allocator_alloc(mapa->_allocator, alloc_size, 1);
+    u8* new_entries = _mrw_alloc(mapa->_allocator, alloc_size, 1);
     buf_set(new_entries, 0, alloc_size);
 
     u8* entries = (u8*)mapa->entries;
@@ -109,7 +109,7 @@ static inline void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size,
         buf_copy((void*)(new_entries + entry_size * index), entry, entry_size);
     }
 
-    allocator_free(mapa->_allocator, mapa->entries, mapa->size * entry_size);
+    _mrw_free(mapa->_allocator, mapa->entries, mapa->size * entry_size);
     mapa->entries = (void*)new_entries;
     mapa->size = new_size;
 }
@@ -157,17 +157,17 @@ do { \
     mapa_remove_at_index(m, mapa_get_index(m, key)); \
 } while (0)
 
-static inline u64 mapa_hash_djb2(void const* v_key, u64 key_size)
+static inline u64 mapa_hash_djb2(const void* v_key, u64 key_size)
 {
     // http://www.cse.yorku.ca/~oz/hash.html
-    u8 const* key = v_key;
+    const u8* key = v_key;
     u64 hash = MAPA_INITIAL_SEED;
     for(u32 i = 0; i < key_size; i++)
         hash = ((hash << 5) + hash) + *(key++); /* hash * 33 + c */
     return hash;
 }
 
-static inline u64 mapa_hash_fnv(void const* key, u64 key_size)
+static inline u64 mapa_hash_fnv(const void* key, u64 key_size)
 {
     // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
     u64 hash = MAPA_INITIAL_SEED;
@@ -185,17 +185,17 @@ static inline u32 murmur_32_scramble(u32 k)
     return k;
 }
 
-static inline u64 mapa_hash_u64(void const* key, u64 key_size)
+static inline u64 mapa_hash_u64(const void* key, u64 key_size)
 {
     return *(u64*)key;
 }
 
-static inline u64 mapa_hash_u32(void const* key, u64 key_size)
+static inline u64 mapa_hash_u32(const void* key, u64 key_size)
 {
     return *(u32*)key;
 }
 
-static inline u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
+static inline u64 mapa_hash_MurmurOAAT_32(const void* key, u64 key_size)
 {
     // https://en.wikipedia.org/wiki/MurmurHash
     u64 hash = MAPA_INITIAL_SEED;
@@ -223,7 +223,7 @@ static inline u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
     return hash;
 }
 
-static inline u8 mapa_cmp_bytes(void const* a, void const* b, u64 size)
+static inline u8 mapa_cmp_bytes(const void* a, const void* b, u64 size)
 {
     return buf_cmp(a, b, size);
 }

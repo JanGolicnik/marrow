@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#define PRINTCCY_CUSTOM_TYPES str: print_str
+#define PRINTCCY_CUSTOM_TYPES str: mrw_print_str
 #include <printccy/printccy.h>
 
 #if defined(__STDC_VERSION__)
@@ -273,13 +273,20 @@ static inline bool char_in_filter(char c, CharFilter filter)
 
 static inline char* str_skip_filter(str s, CharFilter filter)
 {
-    while(s.start != s.end && char_in_filter(*s.start, filter)) s.start++;
+    while (s.start != s.end && char_in_filter(*s.start, filter)) s.start++;
     return s.start;
+}
+
+static inline char* str_find(str s, char c)
+{
+    for (;s.start != s.end;s.start++)
+        if (*(s.start) == c) return s.start;
+    return nullptr;
 }
 
 static inline char* str_find_r(str s, char c)
 {
-    if (s.start == s.end) return nullptr;
+    if (slice_count(s) == 0) return nullptr;
     do { if(*(--s.end) == c) return s.end; } while (s.end != s.start);
     return nullptr;
 }
@@ -392,77 +399,55 @@ static inline u64 hash_combine(u64 a, u64 b)
     }\
 } while(false)
 
-static inline u32 value_to_rgb(f32 value)
-{
-    value = clamp(value, 0.0f, 1.0f);
-    return ((u8)(value * 0xff) << 16) | ((u8)(value * 0xff) << 8) | (u8)(value * 0xff);
+STRUCT(HSV) { f32 h, s, v; };
+
+// adapted from https://github.com/Inseckto/HSV-to-RGB/blob/master/HSV2RGB.c
+u32 hsv_to_rgb(HSV hsv) {
+	f32 h = hsv.h / 360.0f;
+    f32 s = hsv.s / 100.0f;
+    f32 v = hsv.v / 100.0f;
+
+	u32 i = floor(h * 6.0f);
+	f32 f = h * 6.0f - i;
+	f32 p = v * (1.0f - s);
+	f32 q = v * (1.0f - f * s);
+	f32 t = v * (1.0f - (1.0f - f) * s);
+
+	f32 r, g, b;
+	switch (i % 6) {
+		case 0: r = v, g = t, b = p; break;
+		case 1: r = q, g = v, b = p; break;
+		case 2: r = p, g = v, b = t; break;
+		case 3: r = p, g = q, b = v; break;
+		case 4: r = t, g = p, b = v; break;
+		case 5: r = v, g = p, b = q; break;
+	}
+	return (0xff << 24) | (u32)(r * 255.0f) << 16 | (u32)(g * 255.0f) << 8 | (u32)(b * 255.0f);
 }
 
-static inline u32 to_byte(f32 x){
-    // x in [0,1], round to nearest and clamp
-    int v = (int)lrintf(x * 255.0f);
-    if (v < 0) v = 0; else if (v > 255) v = 255;
-    return (u32)v;
-}
+// adapted from https://gist.github.com/fairlight1337/4935ae72bcbcc1ba5c72
+void rgb_to_hsv(f32 r, f32 g, f32 b, f32* h, f32* s, f32* v) {
+  f32 fCMax = max(max(r, g), b);
+  f32 fCMin = min(min(r, g), b);
+  f32 fDelta = fCMax - fCMin;
 
-STRUCT(HSV) {
-    f32 hue;
-    f32 saturation;
-    f32 value;
-};
-
-static inline u32 hsv_to_rgb(HSV hsv)
-{
-    hsv.value = clamp(hsv.value, 0.0f, 1.0f);
-    hsv.saturation = clamp(hsv.saturation, 0.0f, 1.0f);
-    if (!isfinite(hsv.hue)) hsv.hue = 0; // hue irrelevant when S==0 or V==0; pick any
-    hsv.hue = wrap_float(hsv.hue, 360.0f);
-
-    f32 c = hsv.value * hsv.saturation;
-    f32 h6 = hsv.hue / 60.0f;         // 0..6
-    f32 x = c * (1.0f - fabsf(fmodf(h6, 2.0f) - 1.0f));
-    f32 m = hsv.value - c;
-
-    f32 r=0, g=0, b=0;
-    if      (h6 < 1) { r=c; g=x; b=0; }
-    else if (h6 < 2) { r=x; g=c; b=0; }
-    else if (h6 < 3) { r=0; g=c; b=x; }
-    else if (h6 < 4) { r=0; g=x; b=c; }
-    else if (h6 < 5) { r=x; g=0; b=c; }
-    else             { r=c; g=0; b=x; }
-
-    u32 R = to_byte(r + m);
-    u32 G = to_byte(g + m);
-    u32 B = to_byte(b + m);
-    return (R << 16) | (G << 8) | B;   // 0xRRGGBB
-}
-
-static inline HSV rgb_to_hsv(u32 color) {
-    f32 r = (f32)((color >> 16) & 0xFF) / 255.f;
-    f32 g = (f32)((color >>  8) & 0xFF) / 255.f;
-    f32 b = (f32)( color        & 0xFF) / 255.f;
-
-    f32 maxv = fmaxf(r, fmaxf(g, b));
-    f32 minv = fminf(r, fminf(g, b));
-    f32 delta = maxv - minv;
-
-    f32 V = maxv;
-
-    f32 S = (maxv <= 0.f) ? 0.f : (delta / maxv);
-
-    f32 H;
-    if (delta == 0.f) {
-        H = 0.f;
-    } else if (maxv == r) {
-        H = 60.f * fmodf(((g - b) / delta), 6.f);
-        if (H < 0.f) H += 360.f;
-    } else if (maxv == g) {
-        H = 60.f * (((b - r) / delta) + 2.f);
-    } else {
-        H = 60.f * (((r - g) / delta) + 4.f);
+  if(fDelta > 0.0f) {
+    if(fCMax == r) {
+      *h = 60.0f * (fmod(((g - b) / fDelta), 6.0f));
+    } else if(fCMax == g) {
+      *h = 60.0f * (((b - r) / fDelta) + 2.0f);
+    } else if(fCMax == b) {
+      *h = 60.0f * (((r - g) / fDelta) + 4.0f);
     }
+    *s = fCMax > 0.0f ? fDelta / fCMax : 0.0f;
+    *v = fCMax;
+  } else {
+    *h = 0.0f;
+    *s = 0.0f;
+    *v = fCMax;
+  }
 
-    return (HSV){wrap_float(H, 360.0f), clamp(S, 0.0f, 1.0f), clamp(V, 0.0f, 1.0f)};
+  if(*h < 0.0f) *h = 360.0f + *h;
 }
 
 #ifndef push_stream
@@ -486,7 +471,7 @@ thread_local u32 _format_buf_len;
 #define mrw_format(f, allocator, ...)\
 (\
     _format_buf_len = print(0, 0, f, __VA_ARGS__),\
-    _format_buf.start = allocator_alloc((Allocator*)allocator, _format_buf_len + 1, 1),\
+    _format_buf.start = _mrw_alloc((Allocator*)allocator, _format_buf_len + 1, 1),\
     (void)print((char*)_format_buf.start, _format_buf_len, f, __VA_ARGS__),\
     _format_buf.end = _format_buf.start + _format_buf_len,\
     _format_buf\
@@ -516,7 +501,7 @@ thread_local u32 _format_buf_len;
 #define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
 #endif // mrw_abort
 
-int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
+static int mrw_print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
     str s = va_arg(*list, str);
     if (!output_len) return slice_size(s);
     size_t n = min(slice_size(s), output_len);
@@ -526,32 +511,36 @@ int print_str(char* output, size_t output_len, va_list* list, cstr args, size_t 
 }
 
 thread_local u32 mrw_seed = 12312;
-u32 pcg_hash(void) {
+static u32 pcg_hash(void) {
     mrw_seed = mrw_seed * 747796405u + 2891336453u;
     u32 state = mrw_seed;
     u32 word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
 }
 
-f32 mrw_random(void) {
+static f32 mrw_random(void) {
     return (f32)pcg_hash() / (f32)U32_MAX;
 }
 
-f32 mrw_random_f32(f32 min, f32 max) {
+static f32 mrw_random_f32(f32 min, f32 max) {
     return mrw_random() * (max - min) + min;
 }
 
 // modified from https://jameshfisher.com/2018/03/30/round-up-power-2/
-u32 u32_nextpow2(u32 x) {
+static u32 u32_nextpow2(u32 x) {
   if (x == 0) return 2;
   x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16;
   return x + 1;
 }
 
-u64 u64_nextpow2(u64 x) {
+static u64 u64_nextpow2(u64 x) {
   if (x==0)return 2;
   x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16; x |= x>>32;
   return x + 1;
+}
+
+static inline void* ptr_align_up(void* x, size_t a) {
+    return (void*)(((usize)x + (a-1)) & ~(uintptr_t)(a-1));
 }
 
 #endif // MARROW_H

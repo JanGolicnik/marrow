@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include "../marrow/marrow.h"
-#include "../marrow/allocator.h"
+#include "../marrow/alloc.h"
 #include "../marrow/genarr.h"
 
 #ifdef MARROW_IMPLEMENTATION

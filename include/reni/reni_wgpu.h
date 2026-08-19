@@ -5,6 +5,21 @@
 
 #include "webgpu/webgpu.h"
 
+#ifndef __EMSCRIPTEN__
+    #include <GLFW/glfw3.h>
+    #if defined(_WIN32)
+        #define GLFW_EXPOSE_NATIVE_WIN32
+    #elif defined(__linux__)
+        #define GLFW_EXPOSE_NATIVE_X11
+        #define GLFW_EXPOSE_NATIVE_WAYLAND
+    #endif
+    #include <GLFW/glfw3native.h>
+#endif
+
+#define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
+#define WEBGPU_STR(str) (WGPUStringView) { .data = str, .length = WGPU_STRLEN }
+#define WEBGPU_STR_SLICE(slice) (WGPUStringView) { .data = slice.start, .length = slice_size(slice) }
+
 #define RENI_ERR(args) mrw_abort("reni error !!: " args)
 #define RENI_LOG(args) mrw_debug("reni log: " args)
 
@@ -1261,6 +1276,10 @@ void reni_end(Reni* reni)
 
 #undef RENI_LOG
 #undef RENI_ERR
+
+#undef WEBGPU_STR_EXACT
+#undef WEBGPU_STR
+#undef WEBGPU_STR_SLICE
 
 #endif // RENI_IMPLEMENTATION
 

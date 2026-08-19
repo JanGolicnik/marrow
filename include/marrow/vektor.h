@@ -2,7 +2,7 @@
 #define MARROW_VEKTOR_H
 
 #include "marrow.h"
-#include "allocator.h"
+#include "alloc.h"
 
 #define VEKTOR(item)\
 struct \
@@ -21,7 +21,7 @@ do { \
 
 #define vektor_free(v) \
 do { \
-    allocator_free(v._allocator, v.items, v.size * sizeof(*v.items)); \
+    _mrw_free(v._allocator, v.items, v.size * sizeof(*v.items)); \
     v.n_items = 0; v.size = 0; v.items = nullptr; \
 } while (0)
 
@@ -36,8 +36,8 @@ static inline void _vektor_ensure(u8 **items, u64 *size, u64 new_size, u64 item_
     if (new_size < *size) return;
     new_size = u64_nextpow2(new_size);
     *items = (u8*)(*items
-        ? allocator_realloc(a, *items, *size * item_size, new_size * item_size, 1)
-        : allocator_alloc(a, new_size * item_size, 1));
+        ? _mrw_realloc(a, *items, *size * item_size, new_size * item_size, 1)
+        : _mrw_alloc(a, new_size * item_size, 1));
     buf_set(*items + *size * item_size, 0, (new_size - *size) * item_size);
     *size = new_size;
 }
