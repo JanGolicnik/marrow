@@ -392,6 +392,7 @@ void reni_release_texture(Reni* reni, ReniTexture texture);
 const ReniTextureConfig* reni_get_texture_config(Reni* reni, ReniTexture texture);
 void reni_texture_resize(Reni* reni, ReniTexture texture, u32 w, u32 h);
 ReniTextureFormat reni_texture_get_format(Reni* reni, ReniTexture texture);
+void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data);
 
 ReniSampler reni_create_sampler(Reni* reni, ReniSamplerConfig config);
 ReniSampler reni_recreate_sampler(Reni* reni, ReniSampler sampler, ReniSamplerConfig config);
@@ -419,6 +420,51 @@ void reni_renderpass_draw(Reni* reni, ReniRenderpass pass, ReniDrawConfig config
 void reni_submit_renderpass(Reni* reni, ReniRenderpass renderpass);
 
 void reni_end(Reni* reni);
+
+static u32 reni_texture_format_bytes(ReniTextureFormat format)
+{
+    switch (format)
+    {
+        case ReniTextureFormat_Undefined: return 0;
+        case ReniTextureFormat_R8Unorm: return 1;
+        case ReniTextureFormat_R8Snorm: return 1;
+        case ReniTextureFormat_R8Uint: return 1;
+        case ReniTextureFormat_R8Sint: return 1;
+        case ReniTextureFormat_RG8Unorm: return 2;
+        case ReniTextureFormat_RG8Snorm: return 2;
+        case ReniTextureFormat_RGBA8Unorm: return 4;
+        case ReniTextureFormat_RGBA8UnormSrgb: return 4;
+        case ReniTextureFormat_RGBA8Snorm: return 4;
+        case ReniTextureFormat_RGBA8Uint: return 4;
+        case ReniTextureFormat_RGBA8Sint: return 4;
+        case ReniTextureFormat_BGRA8Unorm: return 4;
+        case ReniTextureFormat_BGRA8UnormSrgb: return 4;
+        case ReniTextureFormat_R16Uint: return 2;
+        case ReniTextureFormat_R16Sint: return 2;
+        case ReniTextureFormat_R16Float: return 2;
+        case ReniTextureFormat_RG16Uint: return 4;
+        case ReniTextureFormat_RG16Sint: return 4;
+        case ReniTextureFormat_RG16Float: return 4;
+        case ReniTextureFormat_RGBA16Uint: return 8;
+        case ReniTextureFormat_RGBA16Sint: return 8;
+        case ReniTextureFormat_RGBA16Float: return 8;
+        case ReniTextureFormat_R32Uint: return 4;
+        case ReniTextureFormat_R32Sint: return 4;
+        case ReniTextureFormat_R32Float: return 4;
+        case ReniTextureFormat_RG32Uint: return 8;
+        case ReniTextureFormat_RG32Sint: return 8;
+        case ReniTextureFormat_RG32Float: return 8;
+        case ReniTextureFormat_RGBA32Uint: return 16;
+        case ReniTextureFormat_RGBA32Sint: return 16;
+        case ReniTextureFormat_RGBA32Float: return 16;
+        case ReniTextureFormat_RGB10A2Unorm: return 4;
+        case ReniTextureFormat_RG11B10Ufloat: return 4;
+
+        case ReniTextureFormat_Depth16Unorm: return 2;
+        case ReniTextureFormat_Depth24Plus: return 4;
+    }
+    return 0;
+}
 
 #define RENI_BLEND_STATE_BLEND (ReniBlendComponent){ .src = ReniBlendFactor_SrcAlpha, .dst = ReniBlendFactor_OneMinusSrcAlpha, .op = ReniBlendOperation_Add }
 #define RENI_BLEND_STATE_ADD (ReniBlendComponent){ .src = ReniBlendFactor_One, .dst = ReniBlendFactor_One, .op = ReniBlendOperation_Add }

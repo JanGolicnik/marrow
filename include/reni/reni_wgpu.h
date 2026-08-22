@@ -1,6 +1,7 @@
 #ifndef RENI_WGPU_H
 #define RENI_WGPU_H
 
+#include <fstream>
 #ifdef RENI_IMPLEMENTATION
 
 #include "webgpu/webgpu.h"
@@ -580,6 +581,24 @@ void reni_release_texture(Reni* reni, ReniTexture texture)
     if (impl->view) wgpuTextureViewRelease(impl->view);
     if (impl->texture) wgpuTextureRelease(impl->texture);
     genarr_remove(reni->textures, texture.h);
+}
+
+void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data)
+{
+    ReniTextureImpl* impl = genarr_get(reni->textures, texture.h);
+    if (!impl) RENI_ERR("Invalid texture handle!");
+    u32 w = impl->config.width;
+    u32 h = impl->config.height;
+    u32 bpp = reni_texture_format_bytes(impl->config.format);
+    usize data_size = slice_size(data);
+    if (data_size != (bpp * w * h)) RENI_ERR("Provided texture data doesnt match size w: {} h:{} bpp:{}", w, h, bpp);
+    wgpuQueueWriteTexture(reni->queue, &(WGPUTexelCopyTextureInfo){
+            .texture = impl->texture, .aspect = WGPUTextureAspect_All
+        },
+        data.start, w * h,
+        &(WGPUTexelCopyBufferLayout){ .bytesPerRow = w * bpp, .rowsPerImage = h, },
+        &(WGPUExtent3D){ .width = w, .height = h, .depthOrArrayLayers = 1 }
+    );
 }
 
 ReniSurface reni_create_surface(Reni* reni, ReniSurfaceConfig config)

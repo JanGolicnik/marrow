@@ -178,7 +178,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_dead(ptr)            slice((ptr), (ptr))
 #define slice_range(ptr, from, to) slice((ptr) + (from), (ptr) + (to))
 #define slice_to(ptr, count)       slice_range((ptr), 0, (count))
-#define slice_one(val)             slice_dead((val))
+#define slice_one(val)             slice_to((val), 1)
 
 #define slice_back(s, count)       slice(slice_start((s)), slice_end((s)) - count)
 #define slice_advance(s, count)    slice_range((s).start, count, slice_count((s)))
