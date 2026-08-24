@@ -71,5 +71,6 @@ do { \
 }while (0)
 
 #define slice_vektor(v) slice_to((v).items, (v).n_items)
+#define slice_vektor_u8(v) (u8Slice)slice_to((u8*)(v).items, (v).n_items * sizeof(*(v).items))
 
 #endif // MARROW_VEKTOR_H

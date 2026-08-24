@@ -393,6 +393,7 @@ const ReniTextureConfig* reni_get_texture_config(Reni* reni, ReniTexture texture
 void reni_texture_resize(Reni* reni, ReniTexture texture, u32 w, u32 h);
 ReniTextureFormat reni_texture_get_format(Reni* reni, ReniTexture texture);
 void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data);
+bool reni_texture_is_equal(ReniTexture a, ReniTexture b);
 
 ReniSampler reni_create_sampler(Reni* reni, ReniSamplerConfig config);
 ReniSampler reni_recreate_sampler(Reni* reni, ReniSampler sampler, ReniSamplerConfig config);

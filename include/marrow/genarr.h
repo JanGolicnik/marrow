@@ -17,6 +17,8 @@ typedef struct { union { u32 i; u32 valid; }; u32 gen; } GenarrHandle;
 #define next_free(i) *(u32*)((*items) + (i) * item_size + next_free_offset)
 #define gen(i) *(u32*)((*items) + (i) * item_size)
 
+#define genarr_handle_is_equal(a, b) ((a).i == (b).i && (a).gen == (b).gen)
+
 #define genarr_init(a, initial_size, allocator) vektor_init((a), (initial_size), (allocator))
 #define genarr_free(a) vektor_free((a))
 #define genarr_clear(a) \

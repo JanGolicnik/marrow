@@ -1,7 +1,6 @@
 #ifndef RENI_WGPU_H
 #define RENI_WGPU_H
 
-#include <fstream>
 #ifdef RENI_IMPLEMENTATION
 
 #include "webgpu/webgpu.h"
@@ -21,8 +20,8 @@
 #define WEBGPU_STR(str) (WGPUStringView) { .data = str, .length = WGPU_STRLEN }
 #define WEBGPU_STR_SLICE(slice) (WGPUStringView) { .data = slice.start, .length = slice_size(slice) }
 
-#define RENI_ERR(args) mrw_abort("reni error !!: " args)
-#define RENI_LOG(args) mrw_debug("reni log: " args)
+#define RENI_ERR(...) mrw_abort("reni error !!: " __VA_ARGS__)
+#define RENI_LOG(...) mrw_debug("reni log: " __VA_ARGS__)
 
 STRUCT(ReniBufferImpl) {
     ReniBufferConfig config;
@@ -297,6 +296,16 @@ WGPUAddressMode _reni_sampler_address_mode_to_wgpu(ReniSamplerAddressMode mode)
         case ReniSamplerAddressMode_ClampToEdge: return WGPUAddressMode_ClampToEdge;
         case ReniSamplerAddressMode_Repeat: return WGPUAddressMode_Repeat;
         case ReniSamplerAddressMode_MirrorRepeat: return WGPUAddressMode_MirrorRepeat;
+    }
+}
+
+WGPUMipmapFilterMode _reni_sampler_filter_mode_to_mipmap_wgpu(ReniSamplerFilterMode mode)
+{
+    switch (mode)
+    {
+        case ReniSamplerFilterMode_Undefined: return WGPUMipmapFilterMode_Undefined;
+        case ReniSamplerFilterMode_Nearest: return WGPUMipmapFilterMode_Nearest;
+        case ReniSamplerFilterMode_Linear: return WGPUMipmapFilterMode_Linear;
     }
 }
 
@@ -595,10 +604,15 @@ void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data)
     wgpuQueueWriteTexture(reni->queue, &(WGPUTexelCopyTextureInfo){
             .texture = impl->texture, .aspect = WGPUTextureAspect_All
         },
-        data.start, w * h,
+        data.start, w * h * bpp,
         &(WGPUTexelCopyBufferLayout){ .bytesPerRow = w * bpp, .rowsPerImage = h, },
         &(WGPUExtent3D){ .width = w, .height = h, .depthOrArrayLayers = 1 }
     );
+}
+
+bool reni_texture_is_equal(ReniTexture a, ReniTexture b)
+{
+    return genarr_handle_is_equal(a.h, b.h);
 }
 
 ReniSurface reni_create_surface(Reni* reni, ReniSurfaceConfig config)
@@ -682,8 +696,9 @@ ReniSampler reni_recreate_sampler(Reni* reni, ReniSampler sampler, ReniSamplerCo
         .addressModeW = address_mode,
         .magFilter = filter_mode,
         .minFilter = filter_mode,
-        .mipmapFilter = WGPUMipmapFilterMode_Linear,
-        .compare = _reni_compare_function_to_wgpu(config.compare)
+        .mipmapFilter = _reni_sampler_filter_mode_to_mipmap_wgpu(config.filter),
+        .compare = _reni_compare_function_to_wgpu(config.compare),
+        .maxAnisotropy = 1
     });
 
     impl->config = config;
@@ -1211,7 +1226,6 @@ void reni_renderpass_draw(Reni* reni, ReniRenderpass renderpass, ReniDrawConfig 
         ReniBufferImpl* indices = genarr_get(reni->buffers, config.indices.h);
         if (!indices) RENI_ERR("Invalid indices buffer handle!");
         wgpuRenderPassEncoderSetIndexBuffer(pass->render_pass, indices->buffer, config.u32_indices ? WGPUIndexFormat_Uint32 : WGPUIndexFormat_Uint16, 0, indices->used);
-
         wgpuRenderPassEncoderDrawIndexed(pass->render_pass, indices->used / (config.u32_indices ? sizeof(u32) : sizeof(u16)), n_instances, 0, 0, 0);
     }
     else
