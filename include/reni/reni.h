@@ -18,9 +18,9 @@
 #define RENI_BINDING_MAX_ENTRIES 8
 
 #ifdef __EMSCRIPTEN__
-#define RENI_BACKEND_WINDOW cstr
+typedef cstr ReniBackendWindow;
 #else
-#define RENI_BACKEND_WINDOW GLFWwindow*
+typedef GLFWwindow* ReniBackendWindow;
 #endif
 
 typedef enum ReniBufferUsage {
@@ -316,7 +316,7 @@ RENI_STRUCT(ReniShader) {
 };
 
 RENI_STRUCT(ReniSurface) {
-    RENI_BACKEND_WINDOW window;
+    ReniBackendWindow window;
     ReniPresentMode mode;
 };
 
@@ -474,7 +474,5 @@ static u32 reni_texture_format_bytes(ReniTextureFormat format)
 #ifdef RENI_IMPLEMENTATION
 #include "reni_wgpu.h"
 #endif // RENI_IMPLEMENTATION
-
-#undef RENI_BACKEND_WINDOW
 
 #endif // RENI_H

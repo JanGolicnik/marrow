@@ -5,7 +5,9 @@
 
 #include "webgpu/webgpu.h"
 
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+    #define WGPUTextureUsage_StorageAttachment 0
+#else
     #include <GLFW/glfw3.h>
     #if defined(_WIN32)
         #define GLFW_EXPOSE_NATIVE_WIN32
@@ -113,7 +115,8 @@ STRUCT(Reni)
 
 static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)
 {
-    if (status != WGPURequestAdapterStatus_Success) RENI_ERR("Failed to get WebGPU adapter");
+    str msg = (str)slice_to((char*)message.data, message.length);
+    if (status != WGPURequestAdapterStatus_Success) RENI_ERR("Failed to get WebGPU adapter {} {}", (int)status, msg);
     *((WGPUAdapter*)userdata1) = adapter;
 }
 
@@ -468,7 +471,7 @@ WGPUBufferUsage _reni_buffer_usage_to_wgpu(ReniBufferUsage usage)
     return ret;
 }
 
-WGPUSurface _reni_get_surface(WGPUInstance instance, RENI_BACKEND_WINDOW window) {
+WGPUSurface _reni_get_surface(WGPUInstance instance, ReniBackendWindow window) {
     return wgpuInstanceCreateSurface(instance, &(WGPUSurfaceDescriptor) {
         .label = (WGPUStringView){ NULL, WGPU_STRLEN },
         .nextInChain = (WGPUChainedStruct*)
@@ -1302,7 +1305,9 @@ void reni_end(Reni* reni)
     while (genarr_next_valid(reni->surfaces, &iter)){
         ReniSurfaceImpl* impl = iter._val;
         if (!impl->acquired) continue;
+    #ifndef __EMSCRIPTEN__
         wgpuSurfacePresent(impl->surface);
+    #endif
         impl->acquired = false;
     }
 }
