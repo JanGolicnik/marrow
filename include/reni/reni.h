@@ -316,6 +316,7 @@ RENI_STRUCT(ReniShader) {
 };
 
 RENI_STRUCT(ReniSurface) {
+    str name;
     ReniBackendWindow window;
     ReniPresentMode mode;
 };
@@ -334,12 +335,13 @@ STRUCT(ReniRenderpassTarget)
 };
 
 RENI_STRUCT(ReniRenderpass) {
-  ReniRenderpassTarget targets[RENI_SHADER_MAX_TARGETS];
-  struct {
-      ReniTexture target;
-      bool clear;
-      f32 clear_value;
-  } depth;
+    str name;
+    ReniRenderpassTarget targets[RENI_SHADER_MAX_TARGETS];
+    struct {
+        ReniTexture target;
+        bool clear;
+        f32 clear_value;
+    } depth;
 };
 
 typedef void (*ReniErrorCallback)(str message);
@@ -350,6 +352,10 @@ STRUCT(ReniConfig) {
 
     Allocator* allocator;
     Allocator* frame_allocator;
+
+    struct {
+        bool timing : 1;
+    } enable;
 };
 
 STRUCT(ReniDrawConfig)
@@ -365,6 +371,11 @@ STRUCT(ReniDrawConfig)
 STRUCT(ReniSurfaceAcquired) {
     ReniSurfaceStatus status;
     ReniTexture texture;
+};
+
+STRUCT(ReniTimingResult) {
+    str name;
+    u64 ns;
 };
 
 #undef RENI_HANDLE
@@ -421,6 +432,8 @@ void reni_renderpass_draw(Reni* reni, ReniRenderpass pass, ReniDrawConfig config
 void reni_submit_renderpass(Reni* reni, ReniRenderpass renderpass);
 
 void reni_end(Reni* reni);
+
+u32 reni_get_timings(Reni* reni, ReniTimingResult* out);
 
 static u32 reni_texture_format_bytes(ReniTextureFormat format)
 {

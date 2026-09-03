@@ -153,7 +153,7 @@ static inline u8 i32_n_digits(i32 v)
 
 static inline void buf_copy(void* dst, const void* source, usize len)
 {
-    while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
+    while (len--) { ((u8*)dst)[len] = ((u8*)source)[len]; }
 }
 
 static inline i32 buf_cmp(const void* a, const void* b, usize len)
