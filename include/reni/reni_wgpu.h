@@ -6,6 +6,8 @@
 #include "webgpu/webgpu.h"
 
 #ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+    #include <emscripten/html5.h>
     #define WGPUTextureUsage_StorageAttachment 0
 #else
     #include <GLFW/glfw3.h>
@@ -30,7 +32,7 @@
 #define RENI_DEBUG(...) mrw_debug("reni debug: " __VA_ARGS__)
 #endif // NDEBUG
 
-#define RENI_TIMING_FRAMES 3
+#define RENI_TIMING_FRAMES 8
 #define RENI_TIMING_MAX_PASSES 256
 
 STRUCT(ReniBufferImpl) {
@@ -108,6 +110,7 @@ STRUCT(ReniTimingFrame)
 
     u32 capacity;
     u32 n_timed;
+    u32 n_mapped;
 
     bool in_flight;
     bool recording;
@@ -128,6 +131,8 @@ STRUCT(Reni)
     WGPUAdapter adapter;
     WGPUDevice device;
     WGPUQueue queue;
+
+    bool initialized;
 
     WGPUCommandEncoder encoder;
 
@@ -152,45 +157,34 @@ ReniTexture reni_recreate_texture(Reni* reni, ReniTexture texture, ReniTextureCo
 ReniSampler reni_recreate_sampler(Reni* reni, ReniSampler sampler, ReniSamplerConfig config);
 ReniShader reni_recreate_shader(Reni* reni, ReniShader shader, ReniShaderConfig config);
 
-static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)
-{
-    str msg = (str)slice_to((char*)message.data, message.length);
-    if (status != WGPURequestAdapterStatus_Success) RENI_ERR("Failed to get WebGPU adapter {} {}", (int)status, msg);
-    *((WGPUAdapter*)userdata1) = adapter;
-}
-
-static void _reni_request_device_callback(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void* userdata2)
-{
-    if (status != WGPURequestDeviceStatus_Success) RENI_ERR("Failed to get WebGPU device");
-    *((WGPUDevice*)userdata1) = device;
-}
-
 static void _reni_error_callback(WGPUDevice const* device, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2)
 {
     ((ReniErrorCallback)userdata1)(message.length == WGPU_STRLEN ? str((char*)message.data) : (str)slice_to((char*)message.data, message.length));
 }
 
-Reni* reni_create_reni(ReniConfig config)
+static void _reni_request_device_callback(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata, void* userdata2)
 {
-    Reni* reni = mrw_alloc(config.allocator, Reni);
-    *reni = (Reni){ .config = config, .instance = wgpuCreateInstance(nullptr) };
-    if (reni->instance) RENI_LOG("Successfully created the WebGPU instance!");
-    else RENI_ERR("Failed to create WebGPU instance!");
+    str msg = (str)slice_to((char*)message.data, message.length);
+    if (status != WGPURequestDeviceStatus_Success) RENI_ERR("Failed to get WebGPU device {} {}", (int)status, msg);
+    RENI_LOG("Successfuly got the device!");
 
-    wgpuInstanceRequestAdapter(reni->instance,
-        &(WGPURequestAdapterOptions) { .powerPreference = WGPUPowerPreference_HighPerformance },
-        (WGPURequestAdapterCallbackInfo) {
-            .mode = WGPUCallbackMode_AllowSpontaneous ,
-            .callback = _reni_request_adapter_callback,
-            .userdata1 = &reni->adapter
-        }
-    );
-    #ifdef __EMSCRIPTEN__
-        while(!reni->adapter) emscripten_sleep(100);
-    #endif
+    Reni* reni = (Reni*)userdata;
+    reni->device = device;
+    reni->queue = wgpuDeviceGetQueue(reni->device);
+    if (!reni->queue) RENI_ERR("Failed to get the queue!");
+    RENI_LOG("Successfuly got the queue!");
 
-    if (reni->adapter) RENI_LOG("Successfully got the adapter!");
-    else RENI_ERR("Failed to get the adapter!");
+    reni->initialized = true;
+}
+
+static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata, void* userdata2)
+{
+    str msg = (str)slice_to((char*)message.data, message.length);
+    if (status != WGPURequestAdapterStatus_Success) RENI_ERR("Failed to get WebGPU adapter {} {}", (int)status, msg);
+    RENI_LOG("Successfuly got the adapter!");
+
+    Reni* reni = userdata;
+    reni->adapter = adapter;
 
     u32 n_features = 0;
     WGPUFeatureName features[1] = { 0 };
@@ -209,7 +203,7 @@ Reni* reni_create_reni(ReniConfig config)
             .defaultQueue.label = WEBGPU_STR("some queue/?"),
             .uncapturedErrorCallbackInfo = (WGPUUncapturedErrorCallbackInfo) {
                 .callback = _reni_error_callback,
-                .userdata1 = (void*)config.error_callback
+                .userdata1 = (void*)reni->config.error_callback
             },
             .requiredFeatureCount = n_features,
             .requiredFeatures = &features[0]
@@ -217,18 +211,41 @@ Reni* reni_create_reni(ReniConfig config)
         (WGPURequestDeviceCallbackInfo){
             .mode = WGPUCallbackMode_AllowSpontaneous,
             .callback = _reni_request_device_callback,
-            .userdata1 = &reni->device
+            .userdata1 = reni
         }
     );
-    #ifdef __EMSCRIPTEN__
-        while(!reni->device) emscripten_sleep(100);
-    #endif
+}
 
-    if (reni->device) RENI_LOG("Succesfully got the device!");
-    else RENI_ERR("Failed to get the device!");
+#ifdef __EMSCRIPTEN__
+void _reni_emscripten_block_until_init(void* userdata)
+{
+    Reni* reni = (Reni*)userdata;
 
-    if ((reni->queue = wgpuDeviceGetQueue(reni->device))) RENI_LOG("Succesfully got the queue!");
-    else RENI_ERR("Failed to get the queue!");
+    if (!reni->queue) {
+        emscripten_push_uncounted_main_loop_blocker(_reni_emscripten_block_until_init, userdata);
+        return;
+    }
+
+    if (reni->config.init_callback) reni->config.init_callback(reni, reni->config.init_callback_data);
+    RENI_DEBUG("Created reni !");
+}
+#endif // __EMSCRIPTEN__
+
+Reni* reni_create_reni(ReniConfig config)
+{
+    Reni* reni = mrw_alloc(config.allocator, Reni);
+    *reni = (Reni){ .config = config, .instance = wgpuCreateInstance(nullptr) };
+    if (reni->instance) RENI_LOG("Successfully created the WebGPU instance!");
+    else RENI_ERR("Failed to create WebGPU instance!");
+
+    wgpuInstanceRequestAdapter(reni->instance,
+        &(WGPURequestAdapterOptions) { .powerPreference = WGPUPowerPreference_HighPerformance },
+        (WGPURequestAdapterCallbackInfo) {
+            .mode = WGPUCallbackMode_AllowSpontaneous,
+            .callback = _reni_request_adapter_callback,
+            .userdata1 = reni
+        }
+    );
 
     genarr_init(reni->surfaces, 1, config.allocator);
     genarr_init(reni->buffers, 1, config.allocator);
@@ -241,7 +258,13 @@ Reni* reni_create_reni(ReniConfig config)
 
     reni->timing.max_passes = 8;
 
-    RENI_DEBUG("Created reni !");
+#ifdef __EMSCRIPTEN__
+    _reni_emscripten_block_until_init((void*)reni);
+#else // __EMSCRIPTEN__
+    while (!reni->queue) {}
+    if (reni->config.init_callback) reni->config.init_callback(reni, reni->config.init_callback_data);
+#endif
+
     return reni;
 }
 
@@ -1441,31 +1464,25 @@ void reni_begin(Reni* reni)
             RENI_LOG("Created a new query for timing with capacity {}", f->capacity);
         }
 
-        f->n_timed = 0;
+        if (!f->in_flight) f->n_timed = 0;
         f->recording = !f->in_flight && f->capacity > 0 && f->query != nullptr;
     }
 }
 
-static void _reni_timing_results_callback(WGPUMapAsyncStatus status, WGPUStringView msg, void* userdata1, void* userdata2)
+static void _reni_timing_results_callback(WGPUMapAsyncStatus status, WGPUStringView msg, void* u1, void* u2)
 {
-    mrw_unused msg; mrw_unused userdata2;
-    ReniTimingFrame* f = (ReniTimingFrame*)userdata1;
+    mrw_unused msg; mrw_unused u2;
+    ReniTimingFrame* f = (ReniTimingFrame*)u1;
 
-    if (status == WGPUMapAsyncStatus_Success)
-    {
-        u64* src = (u64*)wgpuBufferGetConstMappedRange(f->result, 0, (usize)f->n_timed * 2 * sizeof(u64));
-        if (src)
-        {
-            for (u32 i = 0; i < f->n_timed; i++)
-            {
-                f->times[i].start = src[i * 2];
-                f->times[i].end = src[i * 2 + 1];
-            }
+    if (status == WGPUMapAsyncStatus_Success) {
+        u32 n = f->n_mapped;
+        const u64* src = (const u64*)wgpuBufferGetConstMappedRange(f->result, 0, (usize)n * 2 * sizeof(u64));
+        if (src && n > 0) {
+            for (u32 i = 0; i < n; i++) { f->times[i].start = src[i*2]; f->times[i].end = src[i*2+1]; }
             f->valid = true;
         }
         wgpuBufferUnmap(f->result);
     }
-
     f->in_flight = false;
 }
 
@@ -1491,6 +1508,7 @@ void reni_end(Reni* reni)
         f->in_flight = true;
         f->recording = false;
         f->valid = false;
+        f->n_mapped = f->n_timed;
         wgpuBufferMapAsync(f->result, WGPUMapMode_Read, 0, (u64)f->n_timed * 2 * sizeof(u64), (WGPUBufferMapCallbackInfo){
             .mode = WGPUCallbackMode_AllowProcessEvents,
             .callback = _reni_timing_results_callback,

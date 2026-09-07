@@ -6,7 +6,7 @@
 #include <math.h>
 
 #define PRINTCCY_CUSTOM_TYPES str: mrw_print_str
-#include "../../../../printccy/include/printccy/printccy.h"
+#include <printccy/printccy.h>
 
 #if defined(__STDC_VERSION__)
     #define C_VERSION __STDC_VERSION__

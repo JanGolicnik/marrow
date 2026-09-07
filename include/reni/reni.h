@@ -344,11 +344,16 @@ RENI_STRUCT(ReniRenderpass) {
     } depth;
 };
 
+typedef struct Reni Reni;
 typedef void (*ReniErrorCallback)(str message);
+typedef void (*ReniInitCallback)(Reni* reni, void* data);
 STRUCT(ReniConfig) {
     str name;
 
     ReniErrorCallback error_callback;
+    void* error_callback_data;
+    ReniInitCallback init_callback;
+    void* init_callback_data;
 
     Allocator* allocator;
     Allocator* frame_allocator;
