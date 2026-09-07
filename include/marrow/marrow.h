@@ -6,7 +6,7 @@
 #include <math.h>
 
 #define PRINTCCY_CUSTOM_TYPES str: mrw_print_str
-#include <printccy/printccy.h>
+#include "../../../../printccy/include/printccy/printccy.h"
 
 #if defined(__STDC_VERSION__)
     #define C_VERSION __STDC_VERSION__
@@ -485,8 +485,13 @@ thread_local u32 _format_buf_len;
     _format_buf\
 )
 
+#define _mrw_stringify(arg) #arg
+#define mrw_stringify(arg) _mrw_stringify(arg)
+
+#define _mrw_print_stuff(fd, color)
+
 #ifndef mrw_debug
-#define mrw_debug(f, ...) do { printfb(stdout, mrw_debug_color "[DEBUG]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define mrw_debug(f, ...) do { printfb(stdout, mrw_debug_color "[DEBUG]" mrw_text_color " " __FILE__ " on line " mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_debug
 
 #ifndef mrw_debug_val
@@ -494,11 +499,11 @@ thread_local u32 _format_buf_len;
 #endif // mrw_debug_val
 
 #ifndef mrw_error
-#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " " __FILE__ " on line " mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_error
 
 #ifndef mrw_abort
-#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " {} on line {}: " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
+#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " " __FILE__ " on line " mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
 #endif // mrw_abort
 
 static int mrw_print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
