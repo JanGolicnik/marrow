@@ -1,8 +1,6 @@
 #ifndef RENI_H
 #define RENI_H
 
-#include <GLFW/glfw3.h>
-
 #include "../marrow/marrow.h"
 #include "../marrow/alloc.h"
 #include "../marrow/genarr.h"
@@ -17,10 +15,12 @@
 #define RENI_SHADER_MAX_TARGETS 8
 #define RENI_BINDING_MAX_ENTRIES 8
 
-#ifdef __EMSCRIPTEN__
-typedef cstr ReniBackendWindow;
-#else
-typedef GLFWwindow* ReniBackendWindow;
+#if defined(RENI_BACKEND_SDL3)
+    typedef SDL_Window* ReniBackendWindow;
+#elif defined(RENI_BACKEND_GLFW)
+    typedef GLFWwindow* ReniBackendWindow;
+#elif defined(__EMSCRIPTEN__)
+    typedef cstr ReniBackendWindow;
 #endif
 
 typedef enum ReniBufferUsage {
@@ -181,15 +181,6 @@ typedef enum ReniBlendOperation {
     ReniBlendOperation_Min,
     ReniBlendOperation_Max,
 } ReniBlendOperation;
-
-typedef enum ReniSurfaceStatus {
-    ReniSurfaceStatus_SuccessOptimal,
-    ReniSurfaceStatus_SuccessSuboptimal,
-    ReniSurfaceStatus_Timeout,
-    ReniSurfaceStatus_Outdated,
-    ReniSurfaceStatus_Lost,
-    ReniSurfaceStatus_Error,
-} ReniSurfaceStatus;
 
 #define RENI_HANDLE(name) STRUCT(name) { GenarrHandle h; }
 #define RENI_STRUCT(name) RENI_HANDLE(name); STRUCT(name ## Config)
@@ -373,16 +364,6 @@ STRUCT(ReniDrawConfig)
     usize n_instances;
 };
 
-STRUCT(ReniSurfaceAcquired) {
-    ReniSurfaceStatus status;
-    ReniTexture texture;
-};
-
-STRUCT(ReniTimingResult) {
-    str name;
-    u64 ns;
-};
-
 #undef RENI_HANDLE
 #undef RENI_STRUCT
 
@@ -396,7 +377,8 @@ void reni_release_surface(Reni* reni, ReniSurface surface);
 
 ReniTextureFormat reni_surface_get_format(Reni* reni, ReniSurface surface);
 void reni_surface_update(Reni* reni, ReniSurface surface, ReniSurfaceState state);
-ReniSurfaceAcquired reni_surface_acquire(Reni* reni, ReniSurface surface);
+void reni_surface_suspend(Reni* reni, ReniSurface surface);
+ReniTexture reni_surface_acquire(Reni* reni, ReniSurface surface);
 
 ReniBuffer reni_create_buffer(Reni* reni, ReniBufferConfig config);
 void reni_release_buffer(Reni* reni, ReniBuffer buffer);
@@ -437,8 +419,6 @@ void reni_renderpass_draw(Reni* reni, ReniRenderpass pass, ReniDrawConfig config
 void reni_submit_renderpass(Reni* reni, ReniRenderpass renderpass);
 
 void reni_end(Reni* reni);
-
-u32 reni_get_timings(Reni* reni, ReniTimingResult* out);
 
 static u32 reni_texture_format_bytes(ReniTextureFormat format)
 {

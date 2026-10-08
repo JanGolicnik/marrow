@@ -50,7 +50,7 @@ typedef const char*   cstr;
 
 #if C_VERSION <= C17
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(bool)
 typedef _Bool         bool;
 #endif
 

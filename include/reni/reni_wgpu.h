@@ -5,11 +5,9 @@
 
 #include "webgpu/webgpu.h"
 
-#ifdef __EMSCRIPTEN__
-    #include <emscripten.h>
-    #include <emscripten/html5.h>
-    #define WGPUTextureUsage_StorageAttachment 0
-#else
+#if defined(RENI_BACKEND_SDL3)
+    #include <SDL3/SDL.h>
+#elif defined(RENI_BACKEND_GLFW)
     #include <GLFW/glfw3.h>
     #if defined(_WIN32)
         #define GLFW_EXPOSE_NATIVE_WIN32
@@ -18,6 +16,14 @@
         #define GLFW_EXPOSE_NATIVE_WAYLAND
     #endif
     #include <GLFW/glfw3native.h>
+#elif !defined(__EMSCRIPTEN__)
+    #error fuck you
+#endif
+
+#ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+    #include <emscripten/html5.h>
+    #define WGPUTextureUsage_StorageAttachment 0
 #endif
 
 #define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
@@ -31,9 +37,6 @@
 #else
 #define RENI_DEBUG(...) mrw_debug("reni debug: " __VA_ARGS__)
 #endif // NDEBUG
-
-#define RENI_TIMING_FRAMES 8
-#define RENI_TIMING_MAX_PASSES 256
 
 STRUCT(ReniBufferImpl) {
     ReniBufferConfig config;
@@ -92,35 +95,17 @@ STRUCT(ReniSurfaceImpl) {
     ReniTextureFormat format;
     ReniTexture texture;
     bool acquired;
+    bool configured;
 
-    WGPUSurface surface;
+    WGPUSurface surface; // null while suspended
+
+    void* metal_view;
 };
 
 STRUCT(ReniRenderpassImpl) {
     ReniRenderpassConfig config;
 
     WGPURenderPassEncoder render_pass;
-};
-
-STRUCT(ReniTimingFrame)
-{
-    WGPUQuerySet query;
-    WGPUBuffer resolve;
-    WGPUBuffer result;
-
-    u32 capacity;
-    u32 n_timed;
-    u32 n_mapped;
-
-    bool in_flight;
-    bool recording;
-    bool valid;
-
-    struct {
-        str name;
-        u64 start;
-        u64 end;
-    } times[RENI_TIMING_MAX_PASSES];
 };
 
 STRUCT(Reni)
@@ -144,13 +129,6 @@ STRUCT(Reni)
     GENARR(ReniBindingLayoutImpl) binding_layouts;
     GENARR(ReniBindingImpl) bindings;
     GENARR(ReniRenderpassImpl) render_passes;
-
-    struct {
-        ReniTimingFrame f[RENI_TIMING_FRAMES];
-        u32 frame;
-        u32 n_passes;
-        u32 max_passes;
-    } timing;
 };
 
 ReniTexture reni_recreate_texture(Reni* reni, ReniTexture texture, ReniTextureConfig config);
@@ -159,7 +137,8 @@ ReniShader reni_recreate_shader(Reni* reni, ReniShader shader, ReniShaderConfig 
 
 static void _reni_error_callback(WGPUDevice const* device, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2)
 {
-    ((ReniErrorCallback)userdata1)(message.length == WGPU_STRLEN ? str((char*)message.data) : (str)slice_to((char*)message.data, message.length));
+    str msg = message.length == WGPU_STRLEN ? str((char*)message.data) : (str)slice_to((char*)message.data, message.length);
+    ((ReniErrorCallback)userdata1)(msg);
 }
 
 static void _reni_request_device_callback(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata, void* userdata2)
@@ -173,8 +152,12 @@ static void _reni_request_device_callback(WGPURequestDeviceStatus status, WGPUDe
     reni->queue = wgpuDeviceGetQueue(reni->device);
     if (!reni->queue) RENI_ERR("Failed to get the queue!");
     RENI_LOG("Successfuly got the queue!");
+}
 
-    reni->initialized = true;
+void _reni_device_lost_callback(WGPUDevice const * device, WGPUDeviceLostReason reason, WGPUStringView message, WGPU_NULLABLE void* userdata1, WGPU_NULLABLE void* userdata2)
+{
+    str msg = (str)slice_to((char*)message.data, message.length);
+    RENI_ERR("DEVICE LOST!!! reason: {}, msg: {}", reason, msg);
 }
 
 static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata, void* userdata2)
@@ -193,7 +176,7 @@ static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPU
         if (wgpuAdapterHasFeature(reni->adapter, feature)) features[n_features++] = feature;\
         else { RENI_LOG("Feature " #val " is not supported and will not be enabled"); val = false; } } } while(0)
 
-    CHECK_FEATURE(reni->config.enable.timing, WGPUFeatureName_TimestampQuery);
+    // CHECK_FEATURE(reni->config.enable.timing, WGPUFeatureName_TimestampQuery);
 
     #undef CHECK_FEATURE
 
@@ -204,6 +187,10 @@ static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPU
             .uncapturedErrorCallbackInfo = (WGPUUncapturedErrorCallbackInfo) {
                 .callback = _reni_error_callback,
                 .userdata1 = (void*)reni->config.error_callback
+            },
+            .deviceLostCallbackInfo = (WGPUDeviceLostCallbackInfo) {
+                .mode = WGPUCallbackMode_AllowSpontaneous,
+                .callback = _reni_device_lost_callback,
             },
             .requiredFeatureCount = n_features,
             .requiredFeatures = &features[0]
@@ -216,20 +203,33 @@ static void _reni_request_adapter_callback(WGPURequestAdapterStatus status, WGPU
     );
 }
 
-#ifdef __EMSCRIPTEN__
-void _reni_emscripten_block_until_init(void* userdata)
+static bool _reni_try_finish_init(Reni* reni)
 {
-    Reni* reni = (Reni*)userdata;
+    if (reni->initialized) return true;
+    if (!reni->queue) wgpuInstanceProcessEvents(reni->instance);
+    if (!reni->queue) return false;
 
-    if (!reni->queue) {
-        emscripten_push_uncounted_main_loop_blocker(_reni_emscripten_block_until_init, userdata);
-        return;
-    }
-
+    reni->initialized = true;
     if (reni->config.init_callback) reni->config.init_callback(reni, reni->config.init_callback_data);
     RENI_DEBUG("Created reni !");
+    return true;
 }
-#endif // __EMSCRIPTEN__
+
+bool reni_is_ready(Reni* reni)
+{
+    return _reni_try_finish_init(reni);
+}
+
+static void _reni_block_until_init(void* userdata)
+{
+    Reni* reni = userdata;
+    #ifdef __EMSCRIPTEN__
+        if (!_reni_try_finish_init(reni))
+            emscripten_push_uncounted_main_loop_blocker(_reni_block_until_init, reni);
+    #else
+        while (!_reni_try_finish_init(reni)) {}
+    #endif
+}
 
 Reni* reni_create_reni(ReniConfig config)
 {
@@ -237,15 +237,6 @@ Reni* reni_create_reni(ReniConfig config)
     *reni = (Reni){ .config = config, .instance = wgpuCreateInstance(nullptr) };
     if (reni->instance) RENI_LOG("Successfully created the WebGPU instance!");
     else RENI_ERR("Failed to create WebGPU instance!");
-
-    wgpuInstanceRequestAdapter(reni->instance,
-        &(WGPURequestAdapterOptions) { .powerPreference = WGPUPowerPreference_HighPerformance },
-        (WGPURequestAdapterCallbackInfo) {
-            .mode = WGPUCallbackMode_AllowSpontaneous,
-            .callback = _reni_request_adapter_callback,
-            .userdata1 = reni
-        }
-    );
 
     genarr_init(reni->surfaces, 1, config.allocator);
     genarr_init(reni->buffers, 1, config.allocator);
@@ -256,14 +247,16 @@ Reni* reni_create_reni(ReniConfig config)
     genarr_init(reni->bindings, 1, config.allocator);
     genarr_init(reni->render_passes, 1, config.allocator);
 
-    reni->timing.max_passes = 8;
+    wgpuInstanceRequestAdapter(reni->instance,
+        &(WGPURequestAdapterOptions) { .powerPreference = WGPUPowerPreference_HighPerformance },
+        (WGPURequestAdapterCallbackInfo) {
+            .mode = WGPUCallbackMode_AllowSpontaneous,
+            .callback = _reni_request_adapter_callback,
+            .userdata1 = reni
+        }
+    );
 
-#ifdef __EMSCRIPTEN__
-    _reni_emscripten_block_until_init((void*)reni);
-#else // __EMSCRIPTEN__
-    while (!reni->queue) {}
-    if (reni->config.init_callback) reni->config.init_callback(reni, reni->config.init_callback_data);
-#endif
+    _reni_block_until_init(reni);
 
     return reni;
 }
@@ -550,37 +543,6 @@ WGPUBufferUsage _reni_buffer_usage_to_wgpu(ReniBufferUsage usage)
     return ret;
 }
 
-WGPUSurface _reni_get_surface(WGPUInstance instance, ReniBackendWindow window) {
-    return wgpuInstanceCreateSurface(instance, &(WGPUSurfaceDescriptor) {
-        .label = (WGPUStringView){ NULL, WGPU_STRLEN },
-        .nextInChain = (WGPUChainedStruct*)
-    #if defined(__EMSCRIPTEN__)
-        &(WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
-            .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector,
-            .selector = (WGPUStringView){ window, WGPU_STRLEN },
-        },
-    #elif defined(__linux__)
-        (glfwGetPlatform() == GLFW_PLATFORM_X11 ?
-        (void*)&(WGPUSurfaceSourceXlibWindow) {
-            .chain.sType =  WGPUSType_SurfaceSourceXlibWindow,
-            .display = glfwGetX11Display(),
-            .window = glfwGetX11Window(window),
-        }  :
-        (void*)&(WGPUSurfaceSourceWaylandSurface) {
-            .chain.sType = WGPUSType_SurfaceSourceWaylandSurface,
-            .display = glfwGetWaylandDisplay(),
-            .surface = glfwGetWaylandWindow(window),
-        }),
-    #else
-        &(WGPUSurfaceSourceWindowsHWND) {
-            .chain.sType = WGPUSType_SurfaceSourceWindowsHWND,
-            .hinstance = GetModuleHandle(NULL),
-            .hwnd = glfwGetWin32Window(window)
-        },
-    #endif
-    });
-}
-
 WGPUShaderStage _reni_shader_stage_to_wgpu(ReniShaderStage stage)
 {
     WGPUShaderStage ret = 0;
@@ -699,16 +661,170 @@ bool reni_texture_is_equal(ReniTexture a, ReniTexture b)
     return genarr_handle_is_equal(a.h, b.h);
 }
 
+static WGPUSurface _reni_create_wgpu_surface(Reni* reni, ReniSurfaceImpl* impl)
+{
+    union {
+        WGPUChainedStruct chain;
+    #if defined(__EMSCRIPTEN__)
+        WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas;
+    #elif defined(_WIN32)
+        WGPUSurfaceSourceWindowsHWND windows;
+    #elif defined(__ANDROID__)
+        WGPUSurfaceSourceAndroidNativeWindow android;
+    #elif defined(__APPLE__)
+        WGPUSurfaceSourceMetalLayer metal;
+    #elif defined(__linux__)
+        WGPUSurfaceSourceXlibWindow x11;
+        WGPUSurfaceSourceWaylandSurface wayland;
+    #else
+        #error unsupported platform
+    #endif
+    } src = { 0 };
+
+    #if defined(RENI_BACKEND_SDL3)
+        SDL_Window* window = impl->config.window;
+        SDL_PropertiesID props = SDL_GetWindowProperties(window);
+
+        #if defined(__EMSCRIPTEN__)
+            const char* selector = SDL_GetHint(SDL_HINT_EMSCRIPTEN_CANVAS_SELECTOR);
+            src.canvas = (WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
+                .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector,
+                .selector = { selector ? selector : "#canvas", WGPU_STRLEN },
+            };
+        #elif defined(_WIN32)
+            src.windows = (WGPUSurfaceSourceWindowsHWND) {
+                .chain.sType = WGPUSType_SurfaceSourceWindowsHWND,
+                .hinstance = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr),
+                .hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr),
+            };
+        #elif defined(__ANDROID__)
+            src.android = (WGPUSurfaceSourceAndroidNativeWindow) {
+                .chain.sType = WGPUSType_SurfaceSourceAndroidNativeWindow,
+                .window = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr),
+            };
+            if (!src.android.window) return nullptr;
+        #elif defined(__APPLE__)
+            if (!impl->metal_view) impl->metal_view = SDL_Metal_CreateView(window);
+            src.metal = (WGPUSurfaceSourceMetalLayer) {
+                .chain.sType = WGPUSType_SurfaceSourceMetalLayer,
+                .layer = SDL_Metal_GetLayer(impl->metal_view),
+            };
+        #elif defined(__linux__)
+            if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") == 0) {
+                src.wayland = (WGPUSurfaceSourceWaylandSurface) {
+                    .chain.sType = WGPUSType_SurfaceSourceWaylandSurface,
+                    .display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr),
+                    .surface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr),
+                };
+            }
+            else {
+                src.x11 = (WGPUSurfaceSourceXlibWindow) {
+                    .chain.sType = WGPUSType_SurfaceSourceXlibWindow,
+                    .display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr),
+                    .window = (u64)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0),
+                };
+            }
+        #endif
+    #elif defined(RENI_BACKEND_GLFW)
+        GLFWwindow* window = impl->config.window;
+
+        #if defined(_WIN32)
+            src.windows = (WGPUSurfaceSourceWindowsHWND) {
+                .chain.sType = WGPUSType_SurfaceSourceWindowsHWND,
+                .hinstance = GetModuleHandle(NULL),
+                .hwnd = glfwGetWin32Window(window),
+            };
+        #elif defined(__linux__)
+            if (glfwGetPlatform() == GLFW_PLATFORM_X11) {
+                src.x11 = (WGPUSurfaceSourceXlibWindow) {
+                    .chain.sType = WGPUSType_SurfaceSourceXlibWindow,
+                    .display = glfwGetX11Display(),
+                    .window = glfwGetX11Window(window),
+                };
+            }
+            else {
+                src.wayland = (WGPUSurfaceSourceWaylandSurface) {
+                    .chain.sType = WGPUSType_SurfaceSourceWaylandSurface,
+                    .display = glfwGetWaylandDisplay(),
+                    .surface = glfwGetWaylandWindow(window),
+                };
+            }
+        #endif
+    #else
+        src.canvas = (WGPUEmscriptenSurfaceSourceCanvasHTMLSelector) {
+            .chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector,
+            .selector = { impl->config.window, WGPU_STRLEN },
+        };
+    #endif
+
+    return wgpuInstanceCreateSurface(reni->instance, &(WGPUSurfaceDescriptor){
+        .label = WEBGPU_STR("reni surface"),
+        .nextInChain = &src.chain,
+    });
+}
+
+static void _reni_surface_configure(Reni* reni, ReniSurfaceImpl* impl)
+{
+    if (impl->state.width == 0 || impl->state.height == 0) return;
+
+    wgpuSurfaceConfigure(impl->surface,
+        &(WGPUSurfaceConfiguration) {
+            .width = impl->state.width,
+            .height = impl->state.height,
+            .device = reni->device,
+            .usage = WGPUTextureUsage_RenderAttachment,
+            .format = _reni_texture_format_to_wgpu(impl->format),
+            .presentMode = _reni_present_mode_to_wgpu(impl->config.mode),
+            .alphaMode = WGPUCompositeAlphaMode_Auto,
+        }
+    );
+    impl->configured = true;
+}
+
+static void _reni_surface_drop_texture(Reni* reni, ReniSurfaceImpl* impl)
+{
+    ReniTextureImpl* texture = genarr_get(reni->textures, impl->texture.h);
+    if (!texture) return;
+    if (texture->view) wgpuTextureViewRelease(texture->view);
+    if (texture->texture) wgpuTextureRelease(texture->texture);
+    texture->view = nullptr;
+    texture->texture = nullptr;
+    texture->surface_texture = (WGPUSurfaceTexture){ 0 };
+    texture->gen++;
+}
+
+static void _reni_surface_release_wgpu(ReniSurfaceImpl* impl)
+{
+    if (impl->surface) wgpuSurfaceRelease(impl->surface);
+    impl->surface = nullptr;
+    impl->configured = false;
+    impl->acquired = false;
+}
+
 ReniSurface reni_create_surface(Reni* reni, ReniSurfaceConfig config)
 {
     if (!config.mode) config.mode = ReniPresentMode_Fifo;
 
-    ReniSurfaceImpl impl = { .config = config, .surface = _reni_get_surface(reni->instance, config.window) };
-    if (!impl.surface) return (ReniSurface){ 0 };
+    ReniSurfaceImpl impl = { .config = config };
+    impl.surface = _reni_create_wgpu_surface(reni, &impl);
+    if (!impl.surface) RENI_ERR("Failed to create surface");
 
-    WGPUSurfaceCapabilities caps; wgpuSurfaceGetCapabilities(impl.surface, reni->adapter, &caps);
-    impl.format = _reni_texture_format_from_wgpu(caps.formats[0]);
+    WGPUSurfaceCapabilities caps = { 0 };
+    if (wgpuSurfaceGetCapabilities(impl.surface, reni->adapter, &caps) != WGPUStatus_Success)
+        RENI_ERR("Failed to get surface capabilities");
+
+    for (usize i = 0; i < caps.formatCount && impl.format == ReniTextureFormat_Undefined; i++)
+        impl.format = _reni_texture_format_from_wgpu(caps.formats[i]);
+
+    bool has_mode = false;
+    WGPUPresentMode mode = _reni_present_mode_to_wgpu(config.mode);
+    for (usize i = 0; i < caps.presentModeCount; i++)
+        has_mode |= caps.presentModes[i] == mode;
+    if (!has_mode) impl.config.mode = ReniPresentMode_Fifo;
+
     wgpuSurfaceCapabilitiesFreeMembers(caps);
+
+    if (impl.format == ReniTextureFormat_Undefined) RENI_ERR("Surface has no supported format");
 
     impl.texture = (ReniTexture){ .h = genarr_add(reni->textures, (ReniTextureImpl){ .is_surface = true, .gen = 1 }) };
 
@@ -728,32 +844,30 @@ void reni_surface_update(Reni* reni, ReniSurface surface, ReniSurfaceState state
     ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
     if (!impl) RENI_ERR("Invalid surface handle");
 
-    if (state.width == impl->state.width && state.height == impl->state.height)
-        return;
-
+    if (state.width != impl->state.width || state.height != impl->state.height) impl->configured = false;
     impl->state = state;
 
-    if (impl->state.width == 0 || impl->state.height == 0) return;
+    if (!impl->surface) impl->surface = _reni_create_wgpu_surface(reni, impl);
+    if (impl->surface && !impl->configured) _reni_surface_configure(reni, impl);
+}
 
-    wgpuSurfaceConfigure(impl->surface,
-        &(WGPUSurfaceConfiguration) {
-            .width = state.width,
-            .height = state.height,
-            .device = reni->device,
-            .usage = WGPUTextureUsage_RenderAttachment,
-            .format = _reni_texture_format_to_wgpu(impl->format),
-            .presentMode = _reni_present_mode_to_wgpu(impl->config.mode),
-            .alphaMode = WGPUCompositeAlphaMode_Auto,
-        }
-    );
+void reni_surface_suspend(Reni* reni, ReniSurface surface)
+{
+    ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
+    if (!impl) RENI_ERR("Invalid surface handle");
+    _reni_surface_drop_texture(reni, impl);
+    _reni_surface_release_wgpu(impl);
 }
 
 void reni_release_surface(Reni* reni, ReniSurface surface)
 {
     ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
     if (!impl) RENI_ERR("Invalid surface handle");
-    if (impl->texture.h.valid) reni_release_texture(reni, impl->texture);
-    if (impl->surface) wgpuSurfaceRelease(impl->surface);
+    reni_release_texture(reni, impl->texture);
+    _reni_surface_release_wgpu(impl);
+#if defined(RENI_BACKEND_SDL3) && defined(__APPLE__)
+    if (impl->metal_view) SDL_Metal_DestroyView(impl->metal_view);
+#endif
     RENI_DEBUG("Released surface {}!", impl->config.name);
     genarr_remove(reni->surfaces, surface.h);
 }
@@ -1291,34 +1405,11 @@ ReniRenderpass reni_create_renderpass(Reni* reni, ReniRenderpassConfig config)
         };
     }
 
-    WGPUPassTimestampWrites timestamp = { 0 };
-    bool has_timestamp = false;
-    if (reni->config.enable.timing)
-    {
-        ReniTimingFrame* f = &reni->timing.f[reni->timing.frame];
-        if (f->recording && reni->timing.n_passes < f->capacity)
-        {
-            u32 idx = reni->timing.n_passes;
-            timestamp = (WGPUPassTimestampWrites) {
-                .querySet = f->query,
-                .beginningOfPassWriteIndex = idx * 2,
-                .endOfPassWriteIndex = idx * 2 + 1,
-            };
-            f->times[idx].name = config.name;
-            f->times[idx].start = 0;
-            f->times[idx].end = 0;
-            f->n_timed = idx + 1;
-            has_timestamp = true;
-        }
-    }
-    reni->timing.n_passes++;
-
     renderpass.render_pass = wgpuCommandEncoderBeginRenderPass(reni->encoder, &(WGPURenderPassDescriptor) {
         .label = WEBGPU_STR_SLICE(config.name),
         .colorAttachmentCount = n_targets,
         .colorAttachments = n_targets > 0 ? color_attachments : nullptr,
         .depthStencilAttachment = config.depth.target.h.valid ? &depth : nullptr,
-        .timestampWrites = has_timestamp ? &timestamp : nullptr,
     });
 
     return (ReniRenderpass){ .h = genarr_add(reni->render_passes, renderpass) };
@@ -1383,7 +1474,7 @@ void reni_submit_renderpass(Reni* reni, ReniRenderpass renderpass)
     genarr_remove(reni->render_passes, renderpass.h);
 }
 
-ReniSurfaceAcquired reni_surface_acquire(Reni* reni, ReniSurface surface)
+ReniTexture reni_surface_acquire(Reni* reni, ReniSurface surface)
 {
     ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
     if (!impl) RENI_ERR("Invalid surface handle");
@@ -1391,16 +1482,30 @@ ReniSurfaceAcquired reni_surface_acquire(Reni* reni, ReniSurface surface)
     ReniTextureImpl* texture = genarr_get(reni->textures, impl->texture.h);
     if (!texture) RENI_ERR("Invalid texture handle");
 
-    if (texture->view) wgpuTextureViewRelease(texture->view);
-    if (texture->texture) wgpuTextureRelease(texture->texture);
+    if (impl->acquired) RENI_ERR("Surface acquired twice without reni_end()");
 
-    wgpuSurfaceGetCurrentTexture(impl->surface, &texture->surface_texture);
-    texture->texture = texture->surface_texture.texture;
+    _reni_surface_drop_texture(reni, impl);
+
+    if (!impl->configured) return (ReniTexture){ 0 };
+
+    WGPUSurfaceTexture st = { 0 };
+    wgpuSurfaceGetCurrentTexture(impl->surface, &st);
+
+    if (st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
+        st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+        if (st.texture) wgpuTextureRelease(st.texture);
+        if (st.status == WGPUSurfaceGetCurrentTextureStatus_Lost) _reni_surface_release_wgpu(impl);
+        else impl->configured = false;
+        return (ReniTexture){ 0 };
+    }
+
+    texture->surface_texture = st;
+    texture->texture = st.texture;
     texture->view = wgpuTextureCreateView(
-        texture->surface_texture.texture,
+        st.texture,
         &(WGPUTextureViewDescriptor){
             .label = WEBGPU_STR("Surface texture view"),
-            .format = wgpuTextureGetFormat(texture->surface_texture.texture),
+            .format = wgpuTextureGetFormat(st.texture),
             .dimension = WGPUTextureViewDimension_2D,
             .mipLevelCount = 1,
             .arrayLayerCount = 1,
@@ -1408,17 +1513,13 @@ ReniSurfaceAcquired reni_surface_acquire(Reni* reni, ReniSurface surface)
         }
     );
     texture->config = (ReniTextureConfig){
-        .width = impl->state.width,
-        .height = impl->state.height,
+        .width = wgpuTextureGetWidth(st.texture),
+        .height = wgpuTextureGetHeight(st.texture),
         .format = impl->format
     };
 
     impl->acquired = true;
-    texture->gen++; // !!!!
-    return (ReniSurfaceAcquired) {
-        .status = ReniSurfaceStatus_SuccessOptimal, // TODO
-        .texture = impl->texture
-    };
+    return impl->texture;
 }
 
 void reni_begin(Reni* reni)
@@ -1427,100 +1528,17 @@ void reni_begin(Reni* reni)
     reni->encoder = wgpuDeviceCreateCommandEncoder(reni->device, &(WGPUCommandEncoderDescriptor){
         .label = WEBGPU_STR("Encoder dude")
     });
-
-    reni->timing.n_passes = 0;
-
-    if (reni->config.enable.timing)
-    {
-        ReniTimingFrame* f = &reni->timing.f[reni->timing.frame];
-        u32 want = min(reni->timing.max_passes, RENI_TIMING_MAX_PASSES);
-        if (!f->in_flight && want > f->capacity)
-        {
-            if (f->query) { wgpuQuerySetRelease(f->query); f->query = nullptr; }
-            if (f->resolve) { wgpuBufferRelease(f->resolve); f->resolve = nullptr; }
-            if (f->result) { wgpuBufferRelease(f->result); f->result = nullptr; }
-            f->valid = false;
-
-            f->capacity = want;
-            u64 bytes = (u64)f->capacity * 2 * sizeof(u64);
-            u64 padded = (bytes + 255) & ~(u64)255;
-
-            f->query = wgpuDeviceCreateQuerySet(reni->device, &(WGPUQuerySetDescriptor){
-                .label = WEBGPU_STR("Reni Timing query set"),
-                .type = WGPUQueryType_Timestamp,
-                .count = f->capacity * 2
-            });
-            f->resolve = wgpuDeviceCreateBuffer(reni->device, &(WGPUBufferDescriptor){
-                .label = WEBGPU_STR("Reni timing resolve buffer"),
-                .usage = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc,
-                .size = padded
-            });
-            f->result = wgpuDeviceCreateBuffer(reni->device, &(WGPUBufferDescriptor){
-                .label = WEBGPU_STR("Reni timing result buffer"),
-                .usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst,
-                .size = padded
-            });
-
-            RENI_LOG("Created a new query for timing with capacity {}", f->capacity);
-        }
-
-        if (!f->in_flight) f->n_timed = 0;
-        f->recording = !f->in_flight && f->capacity > 0 && f->query != nullptr;
-    }
-}
-
-static void _reni_timing_results_callback(WGPUMapAsyncStatus status, WGPUStringView msg, void* u1, void* u2)
-{
-    mrw_unused msg; mrw_unused u2;
-    ReniTimingFrame* f = (ReniTimingFrame*)u1;
-
-    if (status == WGPUMapAsyncStatus_Success) {
-        u32 n = f->n_mapped;
-        const u64* src = (const u64*)wgpuBufferGetConstMappedRange(f->result, 0, (usize)n * 2 * sizeof(u64));
-        if (src && n > 0) {
-            for (u32 i = 0; i < n; i++) { f->times[i].start = src[i*2]; f->times[i].end = src[i*2+1]; }
-            f->valid = true;
-        }
-        wgpuBufferUnmap(f->result);
-    }
-    f->in_flight = false;
 }
 
 void reni_end(Reni* reni)
 {
     if (!reni->encoder) RENI_ERR("End called without a matching reni_begin()");
 
-    ReniTimingFrame* f = &reni->timing.f[reni->timing.frame];
-    bool timing = reni->config.enable.timing && f->recording && f->n_timed > 0;
-
-    if (timing) {
-        wgpuCommandEncoderResolveQuerySet(reni->encoder, f->query, 0, f->n_timed * 2, f->resolve, 0);
-        wgpuCommandEncoderCopyBufferToBuffer(reni->encoder, f->resolve, 0, f->result, 0, (u64)f->n_timed * 2 * sizeof(u64));
-    }
-
     WGPUCommandBuffer command = wgpuCommandEncoderFinish(reni->encoder, &(WGPUCommandBufferDescriptor){ .label = WEBGPU_STR("Command dude") });
     wgpuCommandEncoderRelease(reni->encoder); reni->encoder = nullptr;
 
     wgpuQueueSubmit(reni->queue, 1, &command);
     wgpuCommandBufferRelease(command);
-
-    if (timing) {
-        f->in_flight = true;
-        f->recording = false;
-        f->valid = false;
-        f->n_mapped = f->n_timed;
-        wgpuBufferMapAsync(f->result, WGPUMapMode_Read, 0, (u64)f->n_timed * 2 * sizeof(u64), (WGPUBufferMapCallbackInfo){
-            .mode = WGPUCallbackMode_AllowProcessEvents,
-            .callback = _reni_timing_results_callback,
-            .userdata1 = (void*)f
-        });
-    }
-
-    if (reni->config.enable.timing) {
-        f->recording = false;
-        reni->timing.max_passes = max(reni->timing.n_passes, reni->timing.max_passes);
-        reni->timing.frame = (reni->timing.frame + 1) % RENI_TIMING_FRAMES;
-    }
 
     GENARR_ITER(ReniSurfaceImpl) iter = { 0 };
     while (genarr_next_valid(reni->surfaces, &iter)){
@@ -1533,36 +1551,6 @@ void reni_end(Reni* reni)
     }
 
     wgpuInstanceProcessEvents(reni->instance);
-}
-
-u32 reni_get_timings(Reni* reni, ReniTimingResult* out)
-{
-    if (!reni->config.enable.timing) return 0;
-
-    ReniTimingFrame* best = nullptr;
-    for (u32 i = 1; i <= RENI_TIMING_FRAMES; i++)
-    {
-        u32 idx = (reni->timing.frame + RENI_TIMING_FRAMES - i) % RENI_TIMING_FRAMES;
-        ReniTimingFrame* f = &reni->timing.f[idx];
-        if (f->valid && !f->in_flight)
-        {
-            best = f;
-            break;
-        }
-    }
-
-    if (!best) return 0;
-
-    u32 written = 0;
-    for (u32 i = 0; i < best->n_timed; i++)
-    {
-        u64 a = best->times[i].start;
-        u64 b = best->times[i].end;
-        if (a == 0 || b == 0 || b <= a) continue;
-        if (out) out[written] = (ReniTimingResult){ .name = best->times[i].name, .ns = b - a };
-        written++;
-    }
-    return written;
 }
 
 #undef RENI_DEBUG
