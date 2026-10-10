@@ -376,9 +376,8 @@ ReniSurface reni_create_surface(Reni* reni, ReniSurfaceConfig config);
 void reni_release_surface(Reni* reni, ReniSurface surface);
 
 ReniTextureFormat reni_surface_get_format(Reni* reni, ReniSurface surface);
-void reni_surface_update(Reni* reni, ReniSurface surface, ReniSurfaceState state);
+ReniTexture reni_surface_acquire(Reni* reni, ReniSurface surface, ReniSurfaceState state);
 void reni_surface_suspend(Reni* reni, ReniSurface surface);
-ReniTexture reni_surface_acquire(Reni* reni, ReniSurface surface);
 
 ReniBuffer reni_create_buffer(Reni* reni, ReniBufferConfig config);
 void reni_release_buffer(Reni* reni, ReniBuffer buffer);

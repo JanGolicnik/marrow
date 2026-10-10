@@ -839,18 +839,6 @@ ReniTextureFormat reni_surface_get_format(Reni* reni, ReniSurface surface)
     return impl->format;
 }
 
-void reni_surface_update(Reni* reni, ReniSurface surface, ReniSurfaceState state)
-{
-    ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
-    if (!impl) RENI_ERR("Invalid surface handle");
-
-    if (state.width != impl->state.width || state.height != impl->state.height) impl->configured = false;
-    impl->state = state;
-
-    if (!impl->surface) impl->surface = _reni_create_wgpu_surface(reni, impl);
-    if (impl->surface && !impl->configured) _reni_surface_configure(reni, impl);
-}
-
 void reni_surface_suspend(Reni* reni, ReniSurface surface)
 {
     ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
@@ -1474,10 +1462,18 @@ void reni_submit_renderpass(Reni* reni, ReniRenderpass renderpass)
     genarr_remove(reni->render_passes, renderpass.h);
 }
 
-ReniTexture reni_surface_acquire(Reni* reni, ReniSurface surface)
+ReniTexture reni_surface_acquire(Reni* reni, ReniSurface surface, ReniSurfaceState state)
 {
     ReniSurfaceImpl* impl = genarr_get(reni->surfaces, surface.h);
     if (!impl) RENI_ERR("Invalid surface handle");
+
+    {
+        if (state.width != impl->state.width || state.height != impl->state.height) impl->configured = false;
+        impl->state = state;
+
+        if (!impl->surface) impl->surface = _reni_create_wgpu_surface(reni, impl);
+        if (impl->surface && !impl->configured) _reni_surface_configure(reni, impl);
+    }
 
     ReniTextureImpl* texture = genarr_get(reni->textures, impl->texture.h);
     if (!texture) RENI_ERR("Invalid texture handle");
