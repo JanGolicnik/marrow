@@ -137,6 +137,8 @@ ReniShader reni_recreate_shader(Reni* reni, ReniShader shader, ReniShaderConfig 
 
 static void _reni_error_callback(WGPUDevice const* device, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2)
 {
+    printf("%s", message.data);
+    exit(0);
     str msg = message.length == WGPU_STRLEN ? str((char*)message.data) : (str)slice_to((char*)message.data, message.length);
     ((ReniErrorCallback)userdata1)(msg);
 }

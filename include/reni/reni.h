@@ -370,6 +370,7 @@ STRUCT(ReniDrawConfig)
 typedef struct Reni Reni;
 
 Reni* reni_create_reni(ReniConfig config);
+bool reni_is_ready(Reni* reni);
 void reni_destroy_reni(Reni* reni);
 
 ReniSurface reni_create_surface(Reni* reni, ReniSurfaceConfig config);
