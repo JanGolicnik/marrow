@@ -1090,7 +1090,7 @@ WGPUBindGroup _reni_get_binding_bind_group(Reni* reni, ReniBinding binding)
                 ReniBufferImpl* buffer = genarr_get(reni->buffers, entry->buffer.buffer.h);
                 if (!buffer) RENI_ERR("Invalid buffer handle");
                 out->buffer = buffer->buffer;
-                out->size = entry->buffer.size ? entry->buffer.size : buffer->size - entry->buffer.offset;
+                out->size = entry->buffer.size ? entry->buffer.size : (buffer->size - entry->buffer.offset);
                 out->offset = entry->buffer.offset;
                 entry->_gen = buffer->gen;
             }

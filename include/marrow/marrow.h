@@ -188,7 +188,7 @@ static inline void buf_set(void* dst, u8 value, usize len)
 #define slice_count(s)             ((usize)(slice_end((s)) > slice_start((s)) ? (slice_end((s)) - slice_start((s))) : 0))
 #define slice_size(s)              (slice_count(s) * sizeof(*slice_start((s))))
 
-#define slice_for_each(s, ptr, T)     for(T* ptr = slice_start((s)); ptr != slice_end((s)); ptr++)
+#define slice_for_each(s, ptr, T)  for(T* ptr = slice_start((s)); ptr != slice_end((s)); ptr++)
 #define slice_for_each_i(s, i)     for(usize i = 0; (slice_start((s)) + (i)) != slice_end((s)); i++)
 
 #define slice_copy_ptr(s, from)    buf_copy((void*)slice_start((s)), (void*)(from), slice_size((s)))
@@ -236,7 +236,7 @@ typedef SLICE(u16)  u16Slice;
 typedef SLICE(str)  strSlice;
 typedef SLICE(cstr) cstrSlice;
 
-#define str(s)      ((str)slice_to(s, c_str_len(s)))
+#define str(s)      ((str)slice_to((char*)s, c_str_len(s)))
 #define sstr(s)     slice_to(s, array_len(s) - 1)
 #define bytes(s)    slice_t(s, u8)
 #define slice_u8(s) bytes(s)
@@ -260,14 +260,22 @@ static inline char* str_skip_until(str s, char c)
 }
 
 typedef enum CharFilter {
-    FILTER_DIGIT = 1 << 0,
-    FILTER_CHAR = 1 << 1,
+    FILTER_DIGIT = BIT(0),
+    FILTER_CHAR = BIT(1),
+    FILTER_PATH_SEPARATOR = BIT(2),
 } CharFilter;
+
+static inline char char_upper(char c)
+{
+    if (c >= 'a' && c <= 'z') return c + ('A' - 'a');
+    return c;
+}
 
 static inline bool char_in_filter(char c, CharFilter filter)
 {
-    if ((filter & FILTER_DIGIT) && (c >= 48 && c <= 57)) return true;
-    if ((filter & FILTER_CHAR) && ((c >= 65 && c <= 90) || (c == '_') || (c >= 97 && c <= 122))) return true;
+    if (FLAG_HAS(filter, FILTER_DIGIT) && (c >= '0' && c <= '9')) return true;
+    if (FLAG_HAS(filter, FILTER_CHAR) && ((c >= 'a' && c <= 'z') || (c == '_') || (c >= 'A' && c <= 'Z'))) return true;
+    if (FLAG_HAS(filter, FILTER_PATH_SEPARATOR) && (c == '/' || c == '\\')) return true;
     return false;
 }
 
@@ -281,6 +289,13 @@ static inline char* str_find(str s, char c)
 {
     for (;s.start != s.end;s.start++)
         if (*(s.start) == c) return s.start;
+    return nullptr;
+}
+
+static inline char* str_find_filter_r(str s, CharFilter filter)
+{
+    if (slice_count(s) == 0) return nullptr;
+    do { if(char_in_filter(*(--s.end), filter)) return s.end; } while (s.end != s.start);
     return nullptr;
 }
 
@@ -491,7 +506,7 @@ thread_local u32 _format_buf_len;
 #define _mrw_print_stuff(fd, color)
 
 #ifndef mrw_debug
-#define mrw_debug(f, ...) do { printfb(stdout, mrw_debug_color "[DEBUG]" mrw_text_color " " __FILE__ " on line " mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define mrw_debug(f, ...) do { printfb(stdout, mrw_debug_color "[DEBUG]" mrw_text_color " " __FILE__ ":" mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_debug
 
 #ifndef mrw_debug_val
@@ -499,11 +514,11 @@ thread_local u32 _format_buf_len;
 #endif // mrw_debug_val
 
 #ifndef mrw_error
-#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " " __FILE__ " on line " mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define mrw_error(f, ...) do { printfb(stderr, mrw_error_color "[ERROR]" mrw_text_color " " __FILE__ ":" mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // mrw_error
 
 #ifndef mrw_abort
-#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " " __FILE__ " on line " mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
+#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " " __FILE__ ":" mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
 #endif // mrw_abort
 
 static int mrw_print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
