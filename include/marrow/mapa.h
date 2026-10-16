@@ -84,6 +84,7 @@ static inline u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_s
 #define mapa_get_index(m, key_ptr) (_mapa_get_index((void*)&m, key_ptr, sizeof(m.entries[0]._v.key), sizeof(m.entries[0]._v), sizeof(*m.entries)))
 
 #define mapa_get_at_index(m, index) ((index <= m.size && m.entries[index].has_value) ? &m.entries[index]._v.value : nullptr)
+#define mapa_get_key_at_index(m, index) ((index <= m.size && m.entries[index].has_value) ? &m.entries[index]._v.key : nullptr)
 
 thread_local u64 _mapa_i = -1;
 #define mapa_get(m, key) (_mapa_i = mapa_get_index(m, key), mapa_get_at_index(m, _mapa_i))
@@ -223,9 +224,19 @@ static inline u64 mapa_hash_MurmurOAAT_32(const void* key, u64 key_size)
     return hash;
 }
 
+static inline u64 mapa_hash_cstr(const void* key, u64 _)
+{
+    return mapa_hash_MurmurOAAT_32(*(cstr*)key, c_str_len(*(cstr*)key));
+}
+
 static inline u8 mapa_cmp_bytes(const void* a, const void* b, u64 size)
 {
     return buf_cmp(a, b, size);
+}
+
+static inline u8 mapa_cmp_cstr(const void* a, const void* b, u64 _)
+{
+    return c_str_cmp(*(cstr*)a, *(cstr*)b);
 }
 
 #endif // MARROW_MAPA_H
