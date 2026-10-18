@@ -487,7 +487,7 @@ thread_local u32 _format_buf_len;
 (\
     _format_buf_len = print(0, 0, f, __VA_ARGS__),\
     _format_buf.start = _mrw_alloc((Allocator*)allocator, _format_buf_len + 1, 1),\
-    (void)print((char*)_format_buf.start, _format_buf_len, f, __VA_ARGS__),\
+    (void)print((char*)_format_buf.start, _format_buf_len + 1, f, __VA_ARGS__),\
     _format_buf.end = _format_buf.start + _format_buf_len,\
     _format_buf\
 )
