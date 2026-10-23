@@ -483,11 +483,11 @@ void rgb_to_hsv(f32 r, f32 g, f32 b, f32* h, f32* s, f32* v) {
 
 thread_local str _format_buf;
 thread_local u32 _format_buf_len;
-#define mrw_format(f, allocator, ...)\
+#define mrw_format(allocator, ...)\
 (\
-    _format_buf_len = print(0, 0, f, __VA_ARGS__),\
+    _format_buf_len = print(0, 0, __VA_ARGS__),\
     _format_buf.start = _mrw_alloc((Allocator*)allocator, _format_buf_len + 1, 1),\
-    (void)print((char*)_format_buf.start, _format_buf_len + 1, f, __VA_ARGS__),\
+    (void)print((char*)_format_buf.start, _format_buf_len + 1, __VA_ARGS__),\
     _format_buf.end = _format_buf.start + _format_buf_len,\
     _format_buf\
 )

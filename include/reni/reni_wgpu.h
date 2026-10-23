@@ -1175,7 +1175,7 @@ WGPUShaderModule _reni_load_shader_module(Reni* reni, cstr path, cstrSlice inclu
         if (fread(ibuf, 1, ilen, ifp) != ilen) { fclose(ifp); RENI_ERR("Failed to read shader include {}", includes.start[i]); }
         fclose(ifp);
         str include_shader = slice_to(ibuf, ilen);
-        full_shader = mrw_format("{}\n{}", reni->config.frame_allocator, include_shader, full_shader);
+        full_shader = mrw_format(reni->config.frame_allocator, "{}\n{}", include_shader, full_shader);
     }
 
     return wgpuDeviceCreateShaderModule(reni->device, &(WGPUShaderModuleDescriptor) {
