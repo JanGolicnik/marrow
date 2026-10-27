@@ -588,7 +588,7 @@ ReniTexture reni_recreate_texture(Reni* reni, ReniTexture texture, ReniTextureCo
             .label = WEBGPU_STR_SLICE(config.name),
             .usage = _reni_texture_usage_to_wgpu(config.usage),
             .dimension = WGPUTextureDimension_2D,
-            .size = { .width = config.width, .height = config.height, .depthOrArrayLayers = 1 },
+            .size = { .width = config.width, .height = config.height, .depthOrArrayLayers = config.layers ? config.layers : 1 },
             .format = _reni_texture_format_to_wgpu(config.format),
             .sampleCount = config.multisampled ? 4 : 1,
             .mipLevelCount = 1,
@@ -597,9 +597,9 @@ ReniTexture reni_recreate_texture(Reni* reni, ReniTexture texture, ReniTextureCo
         bool is_depth_format = config.format == ReniTextureFormat_Depth16Unorm || config.format == ReniTextureFormat_Depth24Plus;
         impl->view = wgpuTextureCreateView(impl->texture, &(WGPUTextureViewDescriptor) {
             .label = WEBGPU_STR_SLICE(config.name),
-            .dimension = WGPUTextureViewDimension_2D,
+            .dimension = config.layers ? WGPUTextureViewDimension_2DArray : WGPUTextureViewDimension_2D,
             .mipLevelCount = 1,
-            .arrayLayerCount = 1,
+            .arrayLayerCount = config.layers ? config.layers : 1,
             .aspect = is_depth_format ? WGPUTextureAspect_DepthOnly : WGPUTextureAspect_All
         });
     }
@@ -640,7 +640,7 @@ void reni_release_texture(Reni* reni, ReniTexture texture)
     genarr_remove(reni->textures, texture.h);
 }
 
-void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data)
+void reni_texture_write_layer(Reni* reni, ReniTexture texture, u8Slice data, u32 layer)
 {
     ReniTextureImpl* impl = genarr_get(reni->textures, texture.h);
     if (!impl) RENI_ERR("Invalid texture handle!");
@@ -650,12 +650,19 @@ void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data)
     usize data_size = slice_size(data);
     if (data_size != ((usize)bpp * w * h)) RENI_ERR("Provided texture data doesnt match size w: {} h:{} bpp:{}", w, h, bpp);
     wgpuQueueWriteTexture(reni->queue, &(WGPUTexelCopyTextureInfo){
-            .texture = impl->texture, .aspect = WGPUTextureAspect_All
+            .texture = impl->texture,
+            .origin = { .z = layer },
+            .aspect = WGPUTextureAspect_All
         },
         data.start, data_size,
         &(WGPUTexelCopyBufferLayout){ .bytesPerRow = w * bpp, .rowsPerImage = h, },
         &(WGPUExtent3D){ .width = w, .height = h, .depthOrArrayLayers = 1 }
     );
+}
+
+void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data)
+{
+    reni_texture_write_layer(reni, texture, data, 0);
 }
 
 bool reni_texture_is_equal(ReniTexture a, ReniTexture b)
@@ -995,7 +1002,7 @@ ReniBindingLayout reni_create_binding_layout(Reni* reni, ReniBindingLayoutConfig
             out->texture = (WGPUTextureBindingLayout) {
                 .sampleType = _reni_sample_type_to_wgpu(entry->texture.type),
                 .multisampled = entry->texture.multisampled,
-                .viewDimension = WGPUTextureViewDimension_2D
+                .viewDimension = entry->texture.array ? WGPUTextureViewDimension_2DArray : WGPUTextureViewDimension_2D
             };
         }
         else if (entry->sampler.type != ReniSamplerType_Undefined) {

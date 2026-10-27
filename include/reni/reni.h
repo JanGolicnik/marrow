@@ -198,6 +198,7 @@ RENI_STRUCT(ReniTexture) {
     bool multisampled;
     ReniTextureFormat format;
     ReniTextureUsage usage;
+    u32 layers;
 };
 RENI_STRUCT(ReniSampler) {
     str name;
@@ -215,6 +216,7 @@ STRUCT(ReniBindingLayoutEntry)
     } buffer;
     struct {
         ReniSampleType type;
+        bool array;
         bool multisampled;
     } texture;
     struct {
@@ -390,6 +392,7 @@ void reni_release_texture(Reni* reni, ReniTexture texture);
 const ReniTextureConfig* reni_get_texture_config(Reni* reni, ReniTexture texture);
 void reni_texture_resize(Reni* reni, ReniTexture texture, u32 w, u32 h);
 ReniTextureFormat reni_texture_get_format(Reni* reni, ReniTexture texture);
+void reni_texture_write_layer(Reni* reni, ReniTexture texture, u8Slice data, u32 layer);
 void reni_texture_write(Reni* reni, ReniTexture texture, u8Slice data);
 bool reni_texture_is_equal(ReniTexture a, ReniTexture b);
 
@@ -466,6 +469,7 @@ static u32 reni_texture_format_bytes(ReniTextureFormat format)
 }
 
 #define RENI_BLEND_STATE_BLEND (ReniBlendComponent){ .src = ReniBlendFactor_SrcAlpha, .dst = ReniBlendFactor_OneMinusSrcAlpha, .op = ReniBlendOperation_Add }
+#define RENI_BLEND_STATE_PREMULTIPLIED (ReniBlendComponent){ .src = ReniBlendFactor_One, .dst = ReniBlendFactor_OneMinusSrcAlpha, .op = ReniBlendOperation_Add }
 #define RENI_BLEND_STATE_ADD (ReniBlendComponent){ .src = ReniBlendFactor_One, .dst = ReniBlendFactor_One, .op = ReniBlendOperation_Add }
 #define RENI_BLEND_STATE_OVERWRITE (ReniBlendComponent){ .src = ReniBlendFactor_Zero, .dst = ReniBlendFactor_One, .op = ReniBlendOperation_Add }
 
