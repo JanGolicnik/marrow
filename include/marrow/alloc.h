@@ -36,7 +36,7 @@ thread_local Allocator _mrw_default_allocator = {.alloc = &_mrw_default_alloc, .
 
 static inline void* _mrw_alloc(Allocator* allocator, usize size, usize align) {
     void* ptr = (allocator ? allocator : &_mrw_default_allocator)->alloc(allocator, size, align);
-    if (!ptr) mrw_abort("allocation failed !!!");
+    if (!ptr) mrw_abort("allocation size {} failed !!! {}", size);
     return ptr;
 }
 static inline void* _mrw_realloc(Allocator* allocator, void* ptr, usize old_size, usize new_size, usize align) {
@@ -100,7 +100,7 @@ static inline void mrw_bump_reset(BumpAllocator* a) {
 static inline void* _mrw_bump_alloc(Allocator* allocator, usize size, usize align)
 {
     BumpAllocator* a = (BumpAllocator*)allocator;
-    loop {
+    mrw_loop {
         for (BumpAllocatorBlock* b = a->first; b; b = b->next) {
             u8* ptr = b->data + b->used;
             u8* aligned_ptr = (u8*)ptr_align_up(ptr, align);

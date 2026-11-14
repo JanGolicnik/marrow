@@ -92,9 +92,9 @@ typedef _Bool         bool;
 #define FLAG_CLEAR(val, v)  ((val) &= ~(v))
 #define FLAG_TOGGLE(val, v) ((val) ^= (v))
 
-#ifndef loop
-#define loop while(true)
-#endif // loop
+#ifndef mrw_loop
+#define mrw_loop while(true)
+#endif // mrw_loop
 
 #ifndef mrw_unused
 #define mrw_unused (void)
@@ -518,7 +518,7 @@ thread_local u32 _format_buf_len;
 #endif // mrw_error
 
 #ifndef mrw_abort
-#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " " __FILE__ ":" mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
+#define mrw_abort(f, ...) ( printfb(stderr, mrw_error_color "[ABORT]" mrw_text_color " " __FILE__ ":" mrw_stringify(__LINE__) ": " mrw_text_color2 "" f "\n" ,##__VA_ARGS__), push_stream(stderr), abort(), 0)
 #endif // mrw_abort
 
 static int mrw_print_str(char* output, size_t output_len, va_list* list, cstr args, size_t args_len) {
