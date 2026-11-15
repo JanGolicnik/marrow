@@ -54,6 +54,14 @@ typedef const char*   cstr;
 typedef _Bool         bool;
 #endif
 
+#ifndef PI
+#define PI 3.141592653589793
+#endif // PI
+
+#ifndef TAU
+#define TAU 6.28318530717958623199592693708837032318115234375
+#endif // TAU
+
 #ifndef true
 #define true 1
 #endif // true
@@ -561,6 +569,31 @@ static u64 u64_nextpow2(u64 x) {
 
 static inline void* ptr_align_up(void* x, size_t a) {
     return (void*)(((usize)x + (a-1)) & ~(uintptr_t)(a-1));
+}
+
+typedef enum {
+    EASE_LINEAR,
+    EASE_IN, // easeincubic
+    EASE_OUT, // easeoutcubic
+    EASE_INOUT, // easeinoutexpo
+    EASE_OUT_BACK, // easeoutback
+    EASE_INOUT_BACK, // easeinoutback
+    EASE_OUT_ELASTIC // easeoutelastic
+} Easing;
+
+// https://easings.net
+static f32 mrw_ease(f32 t, Easing easing)
+{
+    switch (easing) {
+        case EASE_LINEAR: return t;
+        case EASE_IN: { return t * t * t; }
+        case EASE_OUT: { return 1 - powf(1 - t, 3.0f); }
+        case EASE_INOUT: { return t <= 0.0f ? 0.0f : t >= 1.0f ? 1.0f : t < 0.5f ? powf(2.0f, 20.0f * t - 10.0f) / 2.0f : (2.0f - powf(2.0f, -20.0f * t + 10.0f)) / 2.0f; }
+        case EASE_OUT_BACK: { f32 c1 = 1.70158f; f32 c3 = c1 + 1.0f; return 1.0f + c3 * powf(t - 1.0f, 3.0f) + c1 * powf(t - 1.0f, 2.0f); }
+        case EASE_INOUT_BACK: { f32 c1 = 1.70158f; f32 c2 = c1 * 1.525f; return t < 0.5f ? (powf(2.0f * t, 2.0f) * ((c2 + 1.0f) * 2.0f * t - c2)) / 2.0f : (powf(2.0f * t - 2.0f, 2.0f) * ((c2 + 1.0f) * (t * 2.0f - 2.0f) + c2) + 2.0f) / 2.0f; }
+        case EASE_OUT_ELASTIC: { f32 c4 = (2.0f * PI) / 3.0f; return t <= 0.0f ? 0.0f : t >= 1.0f ? 1.0f : powf(2.0f, -10.0f * t) * sin((t * 10.0f - 0.75f) * c4) + 1.0f; }
+    }
+    return t;
 }
 
 #endif // MARROW_H
