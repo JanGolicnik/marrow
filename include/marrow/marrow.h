@@ -222,6 +222,13 @@ static inline void buf_set(void* dst, u8 value, usize len)
     union name
 #endif // UNION
 
+#ifndef ENUM
+#define ENUM(name, type)\
+    typedef type name;\
+    typedef SLICE(name) name##Slice;\
+    enum
+#endif // ENUM
+
 static inline u32 c_str_len(cstr c_str)
 {
     cstr iter = c_str;
